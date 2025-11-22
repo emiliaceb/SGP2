@@ -8,26 +8,28 @@ function mapOrders(ordersRows, detailsRows) {
     ordersMap.set(row.id_orden, {
       id_orden: row.id_orden,
       fecha_pedido: row.fecha_pedido,
-      fecha_entrega: row.fecha_entrega,
-      monto_total: row.monto_total !== null ? Number(row.monto_total) : 0,
+      fecha_recepcion: row.fecha_recepcion,
       estado: row.estado,
-      id_proveedor: row.id_proveedor,
+      cuit: row.cuit,
       proveedor_nombre: row.proveedor_nombre,
       detalles: [],
+      monto_total: 0,
     })
   })
 
   detailsRows.forEach((detail) => {
     const order = ordersMap.get(detail.id_orden)
     if (order) {
+      const subtotal = Number(detail.subtotal)
       order.detalles.push({
-        id_detalle: detail.id_Detalle_OC,
-        id_producto: detail.id_producto,
+        id_item: detail.id_item,
+        id_equipo: detail.id_equipo,
         producto_nombre: detail.nombre_producto,
         cantidad: detail.cantidad,
         precio_unitario: Number(detail.precio_unitario),
-        subtotal: Number(detail.subtotal),
+        subtotal: subtotal,
       })
+      order.monto_total += subtotal
     }
   })
 
@@ -41,27 +43,24 @@ async function fetchOrders(pool) {
       SELECT 
         o.id_orden,
         o.fecha_pedido,
-        o.fecha_entrega,
-        o.monto_total,
+        o.fecha_recepcion,
         o.estado,
-        o.id_proveedor,
-        per.nombre AS proveedor_nombre
-      FROM Orden_De_Compra o
-        INNER JOIN Proveedor pr ON o.id_proveedor = pr.id_proveedor
-        INNER JOIN Persona per ON pr.id_persona = per.id_persona
+        o.cuit,
+        p.razon_social AS proveedor_nombre
+      FROM ORDEN_DE_COMPRA o
+        INNER JOIN PROVEEDOR p ON o.cuit = p.cuit
       ORDER BY o.fecha_pedido DESC, o.id_orden DESC;
 
       SELECT 
-        d.id_Detalle_OC,
-        d.id_orden,
-        d.id_producto,
-        prod.nombre_producto,
-        d.cantidad,
-        d.precio_unitario,
-        d.subtotal
-      FROM Detalle_OC d
-        INNER JOIN Producto prod ON d.id_producto = prod.id_producto
-      ORDER BY d.id_orden ASC, d.id_Detalle_OC ASC;
+        i.id_item,
+        i.id_orden,
+        i.id_equipo,
+        i.descripcion AS nombre_producto,
+        i.cantidad,
+        i.precio_unitario,
+        i.subtotal
+      FROM ITEM_ORDEN_DE_COMPRA i
+      ORDER BY i.id_orden ASC, i.id_item ASC;
     `)
 
   const ordersRows = result.recordsets[0]
@@ -78,28 +77,25 @@ async function fetchOrderById(pool, id) {
       SELECT 
         o.id_orden,
         o.fecha_pedido,
-        o.fecha_entrega,
-        o.monto_total,
+        o.fecha_recepcion,
         o.estado,
-        o.id_proveedor,
-        per.nombre AS proveedor_nombre
-      FROM Orden_De_Compra o
-        INNER JOIN Proveedor pr ON o.id_proveedor = pr.id_proveedor
-        INNER JOIN Persona per ON pr.id_persona = per.id_persona
+        o.cuit,
+        p.razon_social AS proveedor_nombre
+      FROM ORDEN_DE_COMPRA o
+        INNER JOIN PROVEEDOR p ON o.cuit = p.cuit
       WHERE o.id_orden = @id_orden;
 
       SELECT 
-        d.id_Detalle_OC,
-        d.id_orden,
-        d.id_producto,
-        prod.nombre_producto,
-        d.cantidad,
-        d.precio_unitario,
-        d.subtotal
-      FROM Detalle_OC d
-        INNER JOIN Producto prod ON d.id_producto = prod.id_producto
-      WHERE d.id_orden = @id_orden
-      ORDER BY d.id_Detalle_OC ASC;
+        i.id_item,
+        i.id_orden,
+        i.id_equipo,
+        i.descripcion AS nombre_producto,
+        i.cantidad,
+        i.precio_unitario,
+        i.subtotal
+      FROM ITEM_ORDEN_DE_COMPRA i
+      WHERE i.id_orden = @id_orden
+      ORDER BY i.id_item ASC;
     `)
 
   if (result.recordsets[0].length === 0) {
@@ -137,7 +133,7 @@ function normalizeItems(items) {
     const precioUnitario = Number(item.precio_unitario)
 
     if (Number.isNaN(cantidad) || cantidad <= 0) {
-      throw new Error('La cantidad de cada producto debe ser un número entero positivo.')
+      throw new Error('La cantidad de cada equipo debe ser un número entero positivo.')
     }
 
     if (Number.isNaN(precioUnitario) || precioUnitario <= 0) {
@@ -147,7 +143,8 @@ function normalizeItems(items) {
     const subtotal = item.subtotal !== undefined ? Number(item.subtotal) : cantidad * precioUnitario
 
     return {
-      id_producto: item.id_producto,
+      id_equipo: item.id_equipo,
+      descripcion: item.descripcion || '',
       cantidad,
       precio_unitario: precioUnitario,
       subtotal: Number(subtotal.toFixed(2)),
@@ -164,31 +161,38 @@ export async function POST(request) {
   const transaction = new sql.Transaction(await getConnection())
 
   try {
-    const { id_proveedor, fecha_pedido, fecha_entrega, estado, items } = await request.json()
+    const { cuit, fecha_pedido, fecha_recepcion, estado, items, id_empleado = 1 } = await request.json()
 
-    if (!id_proveedor || !fecha_pedido || !estado) {
+    if (!cuit || !fecha_pedido || !estado) {
       return NextResponse.json(
-        { success: false, error: 'Los campos id_proveedor, fecha_pedido y estado son obligatorios.' },
+        { success: false, error: 'Los campos cuit, fecha_pedido y estado son obligatorios.' },
+        { status: 400 }
+      )
+    }
+
+    // Validar que si el estado es "Recibida" debe tener fecha_recepcion
+    if (estado === 'Recibida' && !fecha_recepcion) {
+      return NextResponse.json(
+        { success: false, error: 'Si el estado es "Recibida" debe especificar la fecha de recepción.' },
         { status: 400 }
       )
     }
 
     const normalizedItems = normalizeItems(items)
-    const monto_total = computeTotal(normalizedItems)
 
     await transaction.begin()
 
     const orderResult = await transaction
       .request()
-      .input('id_proveedor', sql.Int, id_proveedor)
+      .input('id_empleado', sql.Int, id_empleado)
+      .input('cuit', sql.BigInt, cuit)
       .input('fecha_pedido', sql.Date, fecha_pedido)
-      .input('fecha_entrega', sql.Date, fecha_entrega || null)
-      .input('monto_total', sql.Decimal(14, 2), monto_total)
+      .input('fecha_recepcion', sql.Date, fecha_recepcion || null)
       .input('estado', sql.NVarChar(50), estado)
       .query(`
-        INSERT INTO Orden_De_Compra (id_proveedor, fecha_pedido, fecha_entrega, monto_total, estado)
-        OUTPUT INSERTED.id_orden AS id_orden
-        VALUES (@id_proveedor, @fecha_pedido, @fecha_entrega, @monto_total, @estado)
+        INSERT INTO ORDEN_DE_COMPRA (id_empleado, cuit, fecha_pedido, fecha_recepcion, estado)
+        OUTPUT INSERTED.id_orden
+        VALUES (@id_empleado, @cuit, @fecha_pedido, @fecha_recepcion, @estado)
       `)
 
     const id_orden = orderResult.recordset[0].id_orden
@@ -197,13 +201,14 @@ export async function POST(request) {
       await transaction
         .request()
         .input('id_orden', sql.Int, id_orden)
-        .input('id_producto', sql.Int, item.id_producto)
-        .input('cantidad', sql.Int, item.cantidad)
+        .input('id_equipo', sql.Int, item.id_equipo || null)
+        .input('descripcion', sql.NVarChar(255), item.descripcion)
+        .input('cantidad', sql.SmallInt, item.cantidad)
         .input('precio_unitario', sql.Decimal(10, 2), item.precio_unitario)
         .input('subtotal', sql.Decimal(10, 2), item.subtotal)
         .query(`
-          INSERT INTO Detalle_OC (id_orden, id_producto, cantidad, precio_unitario, subtotal)
-          VALUES (@id_orden, @id_producto, @cantidad, @precio_unitario, @subtotal)
+          INSERT INTO ITEM_ORDEN_DE_COMPRA (id_orden, id_equipo, descripcion, cantidad, precio_unitario, subtotal)
+          VALUES (@id_orden, @id_equipo, @descripcion, @cantidad, @precio_unitario, @subtotal)
         `)
     }
 
@@ -238,34 +243,55 @@ export async function PUT(request) {
   const transaction = new sql.Transaction(await getConnection())
 
   try {
-    const { id_orden, id_proveedor, fecha_pedido, fecha_entrega, estado, items } = await request.json()
+    const { id_orden, cuit, fecha_pedido, fecha_recepcion, estado, items } = await request.json()
 
-    if (!id_orden || !id_proveedor || !fecha_pedido || !estado) {
+    if (!id_orden || !cuit || !fecha_pedido || !estado) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos obligatorios para actualizar la orden.' },
         { status: 400 }
       )
     }
 
+    // Validar que si el estado es "Recibida" debe tener fecha_recepcion
+    if (estado === 'Recibida' && !fecha_recepcion) {
+      return NextResponse.json(
+        { success: false, error: 'Si el estado es "Recibida" debe especificar la fecha de recepción.' },
+        { status: 400 }
+      )
+    }
+
     const normalizedItems = normalizeItems(items)
-    const monto_total = computeTotal(normalizedItems)
 
     await transaction.begin()
+
+    // Obtener el estado anterior de la orden
+    const previousOrderResult = await transaction
+      .request()
+      .input('id_orden', sql.Int, id_orden)
+      .query(`SELECT estado FROM ORDEN_DE_COMPRA WHERE id_orden = @id_orden`)
+
+    if (previousOrderResult.recordset.length === 0) {
+      await transaction.rollback()
+      return NextResponse.json(
+        { success: false, error: 'Orden no encontrada' },
+        { status: 404 }
+      )
+    }
+
+    const previousEstado = previousOrderResult.recordset[0].estado
 
     const updateOrderResult = await transaction
       .request()
       .input('id_orden', sql.Int, id_orden)
-      .input('id_proveedor', sql.Int, id_proveedor)
+      .input('cuit', sql.BigInt, cuit)
       .input('fecha_pedido', sql.Date, fecha_pedido)
-      .input('fecha_entrega', sql.Date, fecha_entrega || null)
-      .input('monto_total', sql.Decimal(14, 2), monto_total)
+      .input('fecha_recepcion', sql.Date, fecha_recepcion || null)
       .input('estado', sql.NVarChar(50), estado)
       .query(`
-        UPDATE Orden_De_Compra
-        SET id_proveedor = @id_proveedor,
+        UPDATE ORDEN_DE_COMPRA
+        SET cuit = @cuit,
             fecha_pedido = @fecha_pedido,
-            fecha_entrega = @fecha_entrega,
-            monto_total = @monto_total,
+            fecha_recepcion = @fecha_recepcion,
             estado = @estado
         WHERE id_orden = @id_orden
       `)
@@ -278,25 +304,82 @@ export async function PUT(request) {
       )
     }
 
-    await transaction
-      .request()
-      .input('id_orden', sql.Int, id_orden)
-      .query(`
-        DELETE FROM Detalle_OC WHERE id_orden = @id_orden
-      `)
+    // Si el estado cambia a "Confirmada", crear los equipos vacíos
+    if (previousEstado !== 'Confirmada' && estado === 'Confirmada') {
+      // Obtener TODOS los ítems de la orden (sin filtrar por id_equipo)
+      const itemsResult = await transaction
+        .request()
+        .input('id_orden', sql.Int, id_orden)
+        .query(`
+          SELECT id_item, cantidad, descripcion, id_equipo
+          FROM ITEM_ORDEN_DE_COMPRA
+          WHERE id_orden = @id_orden
+        `)
 
-    for (const item of normalizedItems) {
+      // Para cada ítem, crear tantos equipos como la cantidad especificada
+      for (const item of itemsResult.recordset) {
+        // Si el ítem ya tiene equipos creados, saltarlo
+        if (item.id_equipo !== null) {
+          continue
+        }
+
+        for (let i = 0; i < item.cantidad; i++) {
+          // Generar un número de serie temporal único
+          const timestamp = Date.now()
+          const random = Math.floor(Math.random() * 10000)
+          const numero_serie_temp = `TEMP-${id_orden}-${item.id_item}-${i + 1}-${timestamp}-${random}`
+          
+          // Crear equipo vacío con número de serie temporal
+          const equipoResult = await transaction
+            .request()
+            .input('numero_serie', sql.NVarChar(100), numero_serie_temp)
+            .query(`
+              INSERT INTO EQUIPO (id_modelo, numero_serie, estado)
+              OUTPUT INSERTED.id_equipo
+              VALUES (NULL, @numero_serie, 'OPERATIVO')
+            `)
+
+          const id_equipo_nuevo = equipoResult.recordset[0].id_equipo
+
+          // Actualizar el ítem para asignarle el equipo (solo el primer equipo del lote)
+          if (i === 0) {
+            await transaction
+              .request()
+              .input('id_item', sql.Int, item.id_item)
+              .input('id_equipo', sql.Int, id_equipo_nuevo)
+              .query(`
+                UPDATE ITEM_ORDEN_DE_COMPRA
+                SET id_equipo = @id_equipo
+                WHERE id_item = @id_item
+              `)
+          }
+        }
+      }
+    }
+
+    // Solo permitir modificar ítems si la orden NO está confirmada
+    if (previousEstado !== 'Confirmada' && estado !== 'Confirmada') {
       await transaction
         .request()
         .input('id_orden', sql.Int, id_orden)
-        .input('id_producto', sql.Int, item.id_producto)
-        .input('cantidad', sql.Int, item.cantidad)
-        .input('precio_unitario', sql.Decimal(10, 2), item.precio_unitario)
-        .input('subtotal', sql.Decimal(10, 2), item.subtotal)
         .query(`
-          INSERT INTO Detalle_OC (id_orden, id_producto, cantidad, precio_unitario, subtotal)
-          VALUES (@id_orden, @id_producto, @cantidad, @precio_unitario, @subtotal)
+          DELETE FROM ITEM_ORDEN_DE_COMPRA WHERE id_orden = @id_orden
         `)
+
+      for (const item of normalizedItems) {
+        await transaction
+          .request()
+          .input('id_orden', sql.Int, id_orden)
+          .input('id_equipo', sql.Int, item.id_equipo || null)
+          .input('descripcion', sql.NVarChar(255), item.descripcion)
+          .input('cantidad', sql.SmallInt, item.cantidad)
+          .input('precio_unitario', sql.Decimal(10, 2), item.precio_unitario)
+          .input('subtotal', sql.Decimal(10, 2), item.subtotal)
+          .query(`
+            INSERT INTO ITEM_ORDEN_DE_COMPRA (id_orden, id_equipo, descripcion, cantidad, precio_unitario, subtotal)
+            VALUES (@id_orden, @id_equipo, @descripcion, @cantidad, @precio_unitario, @subtotal)
+          `)
+      }
     }
 
     await transaction.commit()
@@ -339,18 +422,28 @@ export async function DELETE(request) {
 
     await transaction.begin()
 
+    // Primero eliminar calificaciones asociadas
     await transaction
       .request()
       .input('id_orden', sql.Int, parseInt(id, 10))
       .query(`
-        DELETE FROM Detalle_OC WHERE id_orden = @id_orden
+        DELETE FROM CALIFICACION WHERE id_orden = @id_orden
       `)
 
+    // Eliminar items de la orden
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        DELETE FROM ITEM_ORDEN_DE_COMPRA WHERE id_orden = @id_orden
+      `)
+
+    // Finalmente eliminar la orden
     const deleteOrderResult = await transaction
       .request()
       .input('id_orden', sql.Int, parseInt(id, 10))
       .query(`
-        DELETE FROM Orden_De_Compra WHERE id_orden = @id_orden
+        DELETE FROM ORDEN_DE_COMPRA WHERE id_orden = @id_orden
       `)
 
     if (deleteOrderResult.rowsAffected[0] === 0) {

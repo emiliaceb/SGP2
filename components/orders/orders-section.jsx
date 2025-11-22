@@ -9,10 +9,11 @@ import OrderModal from "@/components/orders/order-modal"
 export default function OrdersSection() {
   const [orders, setOrders] = useState([])
   const [providers, setProviders] = useState([])
-  const [products, setProducts] = useState([])
+  const [equipos, setEquipos] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingOrder, setEditingOrder] = useState(null)
+  const [viewMode, setViewMode] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -25,15 +26,15 @@ export default function OrdersSection() {
       setLoading(true)
       setError(null)
 
-      const [ordersResponse, providersResponse, productsResponse] = await Promise.all([
+      const [ordersResponse, providersResponse, equiposResponse] = await Promise.all([
         fetch("/api/orders"),
         fetch("/api/providers?mode=options"),
-        fetch("/api/products"),
+        fetch("/api/equipos"),
       ])
 
       const ordersJson = await ordersResponse.json()
       const providersJson = await providersResponse.json()
-      const productsJson = await productsResponse.json()
+      const equiposJson = await equiposResponse.json()
 
       if (!ordersJson.success) {
         throw new Error(ordersJson.error || "No se pudieron obtener las órdenes")
@@ -43,13 +44,13 @@ export default function OrdersSection() {
         throw new Error(providersJson.error || "No se pudieron obtener los proveedores")
       }
 
-      if (!productsJson.success) {
-        throw new Error(productsJson.error || "No se pudieron obtener los productos")
+      if (!equiposJson.success) {
+        throw new Error(equiposJson.error || "No se pudieron obtener los equipos")
       }
 
       setOrders(ordersJson.data)
       setProviders(providersJson.data)
-      setProducts(productsJson.data)
+      setEquipos(equiposJson.data)
     } catch (err) {
       console.error("Error fetching orders data:", err)
       setError(err.message)
@@ -101,8 +102,15 @@ export default function OrdersSection() {
     }
   }
 
+  const handleView = (order) => {
+    setEditingOrder(order)
+    setViewMode(true)
+    setIsModalOpen(true)
+  }
+
   const handleEdit = (order) => {
     setEditingOrder(order)
+    setViewMode(false)
     setIsModalOpen(true)
   }
 
@@ -188,6 +196,7 @@ export default function OrdersSection() {
         <Button
           onClick={() => {
             setEditingOrder(null)
+            setViewMode(false)
             setIsModalOpen(true)
           }}
         >
@@ -212,12 +221,10 @@ export default function OrdersSection() {
           <table className="w-full min-w-[960px]">
             <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Orden</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Proveedor</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha pedido</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha entrega</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Detalle</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Monto total</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">ID Orden</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha de Pedido</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha de Recepción</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
@@ -225,35 +232,29 @@ export default function OrdersSection() {
             <tbody className="divide-y divide-border">
               {filteredOrders.map((order) => (
                 <tr key={order.id_orden} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-foreground font-medium">#{order.id_orden}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{order.proveedor_nombre}</td>
+                  <td className="px-6 py-4 text-sm text-foreground font-medium">{order.proveedor_nombre}</td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">#{order.id_orden}</td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
                     {order.fecha_pedido ? new Date(order.fecha_pedido).toLocaleDateString("es-AR") : "-"}
                   </td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {order.fecha_entrega ? new Date(order.fecha_entrega).toLocaleDateString("es-AR") : "Pendiente"}
+                    {order.fecha_recepcion ? new Date(order.fecha_recepcion).toLocaleDateString("es-AR") : "-"}
                   </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground max-w-sm">{renderItemsSummary(order)}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{formatCurrency(order.monto_total || 0)}</td>
                   <td className="px-6 py-4">{getEstadoBadge(order.estado)}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          const detailLines = order.detalles
-                            .map((item) => `${item.cantidad} x ${item.producto_nombre} (${formatCurrency(item.subtotal)})`)
-                            .join('\n')
-                          alert(`Orden #${order.id_orden}\nProveedor: ${order.proveedor_nombre}\nMonto total: ${formatCurrency(order.monto_total || 0)}\n\nDetalle:\n${detailLines || 'Sin registros'}`)
-                        }}
+                        onClick={() => handleView(order)}
+                        title="Ver detalles"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-4 h-4 text-blue-600" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(order)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(order)} title="Editar orden">
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(order)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(order)} title="Eliminar orden">
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </div>
@@ -276,11 +277,13 @@ export default function OrdersSection() {
         onClose={() => {
           setIsModalOpen(false)
           setEditingOrder(null)
+          setViewMode(false)
         }}
         onSave={handleSaveOrder}
         order={editingOrder}
         providers={providers}
-        products={products}
+        equipos={equipos}
+        viewMode={viewMode}
       />
     </div>
   )

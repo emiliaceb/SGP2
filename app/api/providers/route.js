@@ -3,79 +3,122 @@ import { NextResponse } from 'next/server'
 
 const baseSelectQuery = `
   SELECT 
-    prov.id_proveedor,
-    prov.fecha_alta,
-    per.id_persona,
-    per.nombre,
-    per.documento,
-    per.correo,
-    per.telefono,
-    dir.id_direccion,
-    dir.calle,
-    dir.numero,
-    dir.departamento,
-    dir.codigo_postal,
-    stats.promedio_puntaje,
-    stats.total_calificaciones,
-    ultima.ultima_puntaje,
-    ultima.ultima_comentario,
-    ultima.ultima_fecha
-  FROM Proveedor prov
-    INNER JOIN Persona per ON prov.id_persona = per.id_persona
-    LEFT JOIN Direccion dir ON dir.id_persona = per.id_persona
-    OUTER APPLY (
-      SELECT 
-        AVG(CAST(c.puntaje AS FLOAT)) AS promedio_puntaje,
-        COUNT(*) AS total_calificaciones
-      FROM Calificacion c
-      WHERE c.id_proveedor = prov.id_proveedor
-    ) stats
-    OUTER APPLY (
-      SELECT TOP 1
-        c.puntaje AS ultima_puntaje,
-        c.comentarios AS ultima_comentario,
-        c.fecha_evaluacion AS ultima_fecha
-      FROM Calificacion c
-      WHERE c.id_proveedor = prov.id_proveedor
-      ORDER BY c.fecha_evaluacion DESC, c.id_calificacion DESC
-    ) ultima
-`
+    P.cuit,
+    P.razon_social,
+    P.telefono,
+    P.email,
+    
+    -- Dirección concatenada
+    COALESCE(
+      (SELECT STRING_AGG(
+        D.calle + ' ' + CAST(D.numero AS NVARCHAR(10)) + 
+        ' (' + D.tipo + 
+        COALESCE(', ' + LOC.nombre, '') + 
+        COALESCE(', ' + PROV.nombre, '') + 
+        COALESCE(', ' + PAIS.nombre, '') + ')', 
+        ' - ') 
+       FROM DIRECCION D
+       LEFT JOIN LOCALIDAD LOC ON D.id_localidad = LOC.idLocalidad
+       LEFT JOIN PROVINCIA PROV ON LOC.idProvincia = PROV.idProvincia
+       LEFT JOIN PAIS ON PROV.idPais = PAIS.idPais
+       WHERE D.cuit = P.cuit)
+      , 'Sin dirección registrada') as direccion,
+
+    T1.localidad,
+    T1.provincia,
+    T1.pais,
+    
+    COALESCE((SELECT STRING_AGG(R.nombre, ', ')
+            FROM PROVEEDOR_RUBRO PR
+            JOIN RUBRO R ON PR.id_rubro = R.id_rubro
+            WHERE PR.cuit = P.cuit), '') as rubros,
+    COALESCE((SELECT ROUND(AVG(CAST(C.puntuacion_total AS DECIMAL(3,2))), 1)
+            FROM CALIFICACION C
+            JOIN ORDEN_DE_COMPRA OC ON C.id_orden = OC.id_orden
+            WHERE OC.cuit = P.cuit), 0) as calificacion
+  FROM PROVEEDOR P
+  
+  -- Obtener campos individuales de la dirección principal
+  OUTER APPLY (
+    SELECT TOP 1 
+        LOC.nombre AS localidad,
+        PROV.nombre AS provincia,
+        PAIS.nombre AS pais
+    FROM DIRECCION D
+    LEFT JOIN LOCALIDAD LOC ON D.id_localidad = LOC.idLocalidad
+    LEFT JOIN PROVINCIA PROV ON LOC.idProvincia = PROV.idProvincia
+    LEFT JOIN PAIS ON PROV.idPais = PAIS.idPais
+    WHERE D.cuit = P.cuit
+    ORDER BY 
+        CASE WHEN D.tipo = 'CASA CENTRAL' THEN 1 ELSE 2 END,
+        D.id_direccion
+  ) AS T1
+
+  WHERE (P.baja IS NULL OR P.baja > GETDATE())`
 
 function mapProvider(row) {
   return {
-    id_proveedor: row.id_proveedor,
-    id_persona: row.id_persona,
-    id_direccion: row.id_direccion,
-    nombre: row.nombre,
-    documento: row.documento,
-    correo: row.correo,
+    cuit: row.cuit,
+    razon_social: row.razon_social,
     telefono: row.telefono,
-    fecha_alta: row.fecha_alta,
-    calle: row.calle,
-    numero: row.numero,
-    departamento: row.departamento,
-    codigo_postal: row.codigo_postal,
-    promedio_puntaje: row.promedio_puntaje !== null ? Number(row.promedio_puntaje) : null,
-    total_calificaciones: row.total_calificaciones || 0,
-    ultima_puntaje: row.ultima_puntaje,
-    ultima_comentario: row.ultima_comentario,
-    ultima_fecha: row.ultima_fecha,
+    email: row.email,
+    rubros: row.rubros || '',
+    direccion: row.direccion,
+    localidad: row.localidad,
+    provincia: row.provincia,
+    pais: row.pais,
+    calificacion_total_promedio: row.calificacion !== null ? Number(row.calificacion) : 0,
   }
+}
+
+// Función para obtener todas las direcciones de un proveedor
+async function fetchProviderAddresses(pool, cuit) {
+  const result = await pool
+    .request()
+    .input('cuit', sql.BigInt, cuit)
+    .query(`
+      SELECT 
+        D.id_direccion,
+        D.tipo,
+        D.calle,
+        D.numero,
+        L.nombre AS localidad,
+        PR.nombre AS provincia,
+        PA.nombre AS pais,
+        L.idLocalidad,
+        PR.idProvincia,
+        PA.idPais
+      FROM DIRECCION D
+      LEFT JOIN LOCALIDAD L ON D.id_localidad = L.idLocalidad
+      LEFT JOIN PROVINCIA PR ON L.idProvincia = PR.idProvincia
+      LEFT JOIN PAIS PA ON PR.idPais = PA.idPais
+      WHERE D.cuit = @cuit
+      ORDER BY 
+        CASE 
+          WHEN D.tipo = 'CASA CENTRAL' THEN 1 
+          ELSE 2 
+        END,
+        D.tipo
+    `)
+
+  return result.recordset
 }
 
 async function fetchProviders(pool) {
   const result = await pool
     .request()
-    .query(`${baseSelectQuery}\n  ORDER BY per.nombre ASC`)
+    .query(`${baseSelectQuery}
+    ORDER BY P.razon_social ASC`)
 
   return result.recordset.map(mapProvider)
 }
 
-async function fetchProviderById(pool, id) {
-  const result = await pool
+async function fetchProviderById(pool, cuit) {
+ const result = await pool
     .request()
-    .input('id_proveedor', sql.Int, id)
-    .query(`${baseSelectQuery}\n  WHERE prov.id_proveedor = @id_proveedor`)
+    .input('cuit', sql.BigInt, cuit)
+    .query(`${baseSelectQuery}
+    AND P.cuit = @cuit`) 
 
   if (result.recordset.length === 0) {
     return null
@@ -92,16 +135,43 @@ export async function GET(request) {
     if (mode === 'options') {
       const result = await pool.request().query(`
         SELECT 
-          prov.id_proveedor,
-          per.nombre
-        FROM Proveedor prov
-          INNER JOIN Persona per ON prov.id_persona = per.id_persona
-        ORDER BY per.nombre ASC
+          P.cuit,
+          P.razon_social
+        FROM PROVEEDOR P
+        ORDER BY P.razon_social ASC
       `)
 
       return NextResponse.json({
         success: true,
         data: result.recordset,
+      })
+    }
+
+    if (mode === 'debug') {
+      const debugResult = await pool.request().query(`
+        SELECT 
+          P.cuit,
+          P.razon_social,
+          D.calle,
+          D.numero,
+          D.tipo,
+          LOC.nombre as localidad,
+          PROV.nombre as provincia,
+          PAIS.nombre as pais,
+          CASE WHEN D.cuit IS NULL THEN 'NO_DIRECCION' ELSE 'CON_DIRECCION' END as tiene_direccion
+        FROM PROVEEDOR P
+        LEFT JOIN DIRECCION D ON P.cuit = D.cuit
+        LEFT JOIN LOCALIDAD LOC ON D.id_localidad = LOC.idLocalidad
+        LEFT JOIN PROVINCIA PROV ON LOC.idProvincia = PROV.idProvincia
+        LEFT JOIN PAIS ON PROV.idPais = PAIS.idPais
+        WHERE (P.baja IS NULL OR P.baja > GETDATE())
+        ORDER BY P.razon_social, D.id_direccion
+      `)
+
+      return NextResponse.json({
+        success: true,
+        debug: true,
+        data: debugResult.recordset,
       })
     }
 
@@ -125,83 +195,127 @@ export async function POST(request) {
 
   try {
     const {
-      nombre,
-      documento,
-      correo,
+      razon_social,
+      cuit,
       telefono,
-      fecha_alta,
+      email,
+      rubro,
+      tipo_direccion,
       calle,
       numero,
-      departamento,
-      codigo_postal,
+      localidad,
+      provincia,
+      pais
     } = await request.json()
 
-    if (!nombre || !documento || !fecha_alta) {
+    if (!razon_social || !cuit) {
       return NextResponse.json(
-        { success: false, error: 'Los campos nombre, documento y fecha_alta son obligatorios.' },
-        { status: 400 }
-      )
-    }
-
-    const numeroInt = numero !== undefined && numero !== null && `${numero}`.trim() !== '' ? parseInt(numero, 10) : null
-    const codigoPostalInt =
-      codigo_postal !== undefined && codigo_postal !== null && `${codigo_postal}`.trim() !== ''
-        ? parseInt(codigo_postal, 10)
-        : null
-
-    if (Number.isNaN(numeroInt) || Number.isNaN(codigoPostalInt)) {
-      return NextResponse.json(
-        { success: false, error: 'Los campos número y código postal deben ser numéricos.' },
+        { success: false, error: 'Los campos razón social y CUIT son obligatorios.' },
         { status: 400 }
       )
     }
 
     await transaction.begin()
 
-    const personaResult = await transaction
+    // Insertar proveedor
+    await transaction
       .request()
-      .input('nombre', sql.NVarChar(100), nombre)
-      .input('documento', sql.VarChar(15), documento)
-      .input('correo', sql.VarChar(100), correo || null)
-      .input('telefono', sql.VarChar(20), telefono || null)
+      .input('razon_social', sql.NVarChar(255), razon_social)
+      .input('cuit', sql.BigInt, cuit)
+      .input('telefono', sql.NVarChar(20), telefono || null)
+      .input('email', sql.NVarChar(100), email || null)
+      .input('alta', sql.Date, new Date())
       .query(`
-        INSERT INTO Persona (nombre, documento, correo, telefono)
-        OUTPUT INSERTED.id_persona
-        VALUES (@nombre, @documento, @correo, @telefono)
+        INSERT INTO PROVEEDOR (razon_social, cuit, telefono, email, alta)
+        VALUES (@razon_social, @cuit, @telefono, @email, @alta)
       `)
 
-    const id_persona = personaResult.recordset[0].id_persona
+    // Si hay datos de dirección, insertarlos
+    if (tipo_direccion && calle && localidad && provincia && pais) {
+      // Primero verificar/crear País
+      const paisResult = await transaction
+        .request()
+        .input('nombre_pais', sql.NVarChar(100), pais)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM PAIS WHERE nombre = @nombre_pais)
+            INSERT INTO PAIS (nombre) VALUES (@nombre_pais)
+          SELECT idPais FROM PAIS WHERE nombre = @nombre_pais
+        `)
+      
+      const idPais = paisResult.recordset[0].idPais
 
-    const proveedorResult = await transaction
-      .request()
-      .input('id_persona', sql.Int, id_persona)
-      .input('fecha_alta', sql.Date, fecha_alta)
-      .query(`
-        INSERT INTO Proveedor (id_persona, fecha_alta)
-        OUTPUT INSERTED.id_proveedor
-        VALUES (@id_persona, @fecha_alta)
-      `)
+      // Verificar/crear Provincia
+      const provinciaResult = await transaction
+        .request()
+        .input('nombre_provincia', sql.NVarChar(100), provincia)
+        .input('idPais', sql.Int, idPais)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM PROVINCIA WHERE nombre = @nombre_provincia AND idPais = @idPais)
+            INSERT INTO PROVINCIA (nombre, idPais) VALUES (@nombre_provincia, @idPais)
+          SELECT idProvincia FROM PROVINCIA WHERE nombre = @nombre_provincia AND idPais = @idPais
+        `)
+      
+      const idProvincia = provinciaResult.recordset[0].idProvincia
 
-    const id_proveedor = proveedorResult.recordset[0].id_proveedor
+      // Verificar/crear Localidad
+      const localidadResult = await transaction
+        .request()
+        .input('nombre_localidad', sql.NVarChar(100), localidad)
+        .input('idProvincia', sql.Int, idProvincia)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM LOCALIDAD WHERE nombre = @nombre_localidad AND idProvincia = @idProvincia)
+            INSERT INTO LOCALIDAD (nombre, idProvincia) VALUES (@nombre_localidad, @idProvincia)
+          SELECT idLocalidad FROM LOCALIDAD WHERE nombre = @nombre_localidad AND idProvincia = @idProvincia
+        `)
+      
+      const idLocalidad = localidadResult.recordset[0].idLocalidad
 
-    if (calle && numeroInt !== null && codigoPostalInt !== null) {
+      // Convertir numero a entero small, manejando valores vacíos o null
+      const numeroValue = numero && numero.toString().trim() !== '' ? parseInt(numero, 10) : null
+
+      // Insertar dirección
       await transaction
         .request()
-        .input('id_persona', sql.Int, id_persona)
-        .input('calle', sql.VarChar(100), calle)
-        .input('numero', sql.Int, numeroInt)
-        .input('departamento', sql.VarChar(50), departamento || null)
-        .input('codigo_postal', sql.Int, codigoPostalInt)
+        .input('cuit', sql.BigInt, cuit)
+        .input('tipo', sql.NVarChar(50), tipo_direccion)
+        .input('calle', sql.NVarChar(255), calle)
+        .input('numero', sql.SmallInt, numeroValue)
+        .input('id_localidad', sql.Int, idLocalidad)
         .query(`
-          INSERT INTO Direccion (id_persona, calle, numero, departamento, codigo_postal)
-          VALUES (@id_persona, @calle, @numero, @departamento, @codigo_postal)
+          INSERT INTO DIRECCION (cuit, tipo, calle, numero, id_localidad)
+          VALUES (@cuit, @tipo, @calle, @numero, @id_localidad)
         `)
+    }
+
+    // Si hay rubro, manejarlo (asumiendo que existe en la tabla RUBRO)
+    if (rubro) {
+      const rubroResult = await transaction
+        .request()
+        .input('nombre_rubro', sql.NVarChar(100), rubro)
+        .query(`
+          IF NOT EXISTS (SELECT 1 FROM RUBRO WHERE nombre = @nombre_rubro)
+            INSERT INTO RUBRO (nombre) VALUES (@nombre_rubro)
+          SELECT id_rubro FROM RUBRO WHERE nombre = @nombre_rubro
+        `)
+      
+      if (rubroResult.recordset.length > 0) {
+        const idRubro = rubroResult.recordset[0].id_rubro
+        
+        await transaction
+          .request()
+          .input('cuit', sql.BigInt, cuit)
+          .input('id_rubro', sql.Int, idRubro)
+          .query(`
+            INSERT INTO PROVEEDOR_RUBRO (cuit, id_rubro)
+            VALUES (@cuit, @id_rubro)
+          `)
+      }
     }
 
     await transaction.commit()
 
     const pool = await getConnection()
-    const provider = await fetchProviderById(pool, id_proveedor)
+    const provider = await fetchProviderById(pool, cuit)
 
     return NextResponse.json(
       {
@@ -230,116 +344,80 @@ export async function PUT(request) {
 
   try {
     const {
-      id_proveedor,
-      id_persona,
-      id_direccion,
-      nombre,
-      documento,
-      correo,
+      cuit,
+      razon_social,
       telefono,
-      fecha_alta,
-      calle,
-      numero,
-      departamento,
-      codigo_postal,
+      email,
+      rubro
     } = await request.json()
 
-    if (!id_proveedor || !id_persona) {
+    if (!cuit) {
       return NextResponse.json(
-        { success: false, error: 'Faltan identificadores de proveedor o persona.' },
-        { status: 400 }
-      )
-    }
-
-    const numeroInt = numero !== undefined && numero !== null && `${numero}`.trim() !== '' ? parseInt(numero, 10) : null
-    const codigoPostalInt =
-      codigo_postal !== undefined && codigo_postal !== null && `${codigo_postal}`.trim() !== ''
-        ? parseInt(codigo_postal, 10)
-        : null
-
-    if (Number.isNaN(numeroInt) || Number.isNaN(codigoPostalInt)) {
-      return NextResponse.json(
-        { success: false, error: 'Los campos número y código postal deben ser numéricos.' },
+        { success: false, error: 'El CUIT es obligatorio para actualizar.' },
         { status: 400 }
       )
     }
 
     await transaction.begin()
 
+    // Actualizar datos básicos del proveedor
     await transaction
       .request()
-      .input('id_persona', sql.Int, id_persona)
-      .input('nombre', sql.NVarChar(100), nombre || null)
-      .input('documento', sql.VarChar(15), documento || null)
-      .input('correo', sql.VarChar(100), correo || null)
-      .input('telefono', sql.VarChar(20), telefono || null)
+      .input('cuit', sql.BigInt, cuit)
+      .input('razon_social', sql.NVarChar(255), razon_social || null)
+      .input('telefono', sql.NVarChar(20), telefono || null)
+      .input('email', sql.NVarChar(100), email || null)
       .query(`
-        UPDATE Persona
-        SET nombre = @nombre,
-            documento = @documento,
-            correo = @correo,
-            telefono = @telefono
-        WHERE id_persona = @id_persona
+        UPDATE PROVEEDOR
+        SET razon_social = @razon_social,
+            telefono = @telefono,
+            email = @email
+        WHERE cuit = @cuit
       `)
 
-    if (fecha_alta) {
+    // Actualizar rubros
+    if (rubro !== undefined) {
+      // Eliminar rubros existentes
       await transaction
         .request()
-        .input('id_proveedor', sql.Int, id_proveedor)
-        .input('fecha_alta', sql.Date, fecha_alta)
+        .input('cuit', sql.BigInt, cuit)
         .query(`
-          UPDATE Proveedor
-          SET fecha_alta = @fecha_alta
-          WHERE id_proveedor = @id_proveedor
+          DELETE FROM PROVEEDOR_RUBRO WHERE cuit = @cuit
         `)
-    }
 
-    const hasAddressData = calle || numeroInt !== null || departamento || codigoPostalInt !== null
-
-    if (hasAddressData) {
-      if (id_direccion) {
-        await transaction
+      // Insertar nuevo rubro si existe
+      if (rubro && rubro.trim()) {
+        const rubroResult = await transaction
           .request()
-          .input('id_direccion', sql.Int, id_direccion)
-          .input('calle', sql.VarChar(100), calle || null)
-          .input('numero', sql.Int, numeroInt)
-          .input('departamento', sql.VarChar(50), departamento || null)
-          .input('codigo_postal', sql.Int, codigoPostalInt)
+          .input('nombre_rubro', sql.NVarChar(100), rubro.trim())
           .query(`
-            UPDATE Direccion
-            SET calle = @calle,
-                numero = @numero,
-                departamento = @departamento,
-                codigo_postal = @codigo_postal
-            WHERE id_direccion = @id_direccion
+            IF NOT EXISTS (SELECT 1 FROM RUBRO WHERE nombre = @nombre_rubro)
+              INSERT INTO RUBRO (nombre) VALUES (@nombre_rubro)
+            SELECT id_rubro FROM RUBRO WHERE nombre = @nombre_rubro
           `)
-      } else {
-        await transaction
-          .request()
-          .input('id_persona', sql.Int, id_persona)
-          .input('calle', sql.VarChar(100), calle || null)
-          .input('numero', sql.Int, numeroInt)
-          .input('departamento', sql.VarChar(50), departamento || null)
-          .input('codigo_postal', sql.Int, codigoPostalInt)
-          .query(`
-            INSERT INTO Direccion (id_persona, calle, numero, departamento, codigo_postal)
-            VALUES (@id_persona, @calle, @numero, @departamento, @codigo_postal)
-          `)
+        
+        if (rubroResult.recordset.length > 0) {
+          const idRubro = rubroResult.recordset[0].id_rubro
+          
+          await transaction
+            .request()
+            .input('cuit', sql.BigInt, cuit)
+            .input('id_rubro', sql.Int, idRubro)
+            .query(`
+              INSERT INTO PROVEEDOR_RUBRO (cuit, id_rubro)
+              VALUES (@cuit, @id_rubro)
+            `)
+        }
       }
-    } else if (id_direccion) {
-      await transaction
-        .request()
-        .input('id_direccion', sql.Int, id_direccion)
-        .query(`
-          DELETE FROM Direccion
-          WHERE id_direccion = @id_direccion
-        `)
     }
+
+    // NOTA: Las direcciones se gestionan a través del endpoint /api/providers/[cuit]/addresses
+    // No se manejan en este endpoint para evitar conflictos
 
     await transaction.commit()
 
     const pool = await getConnection()
-    const provider = await fetchProviderById(pool, id_proveedor)
+    const provider = await fetchProviderById(pool, cuit)
 
     if (!provider) {
       return NextResponse.json(
@@ -372,22 +450,23 @@ export async function DELETE(request) {
 
   try {
     const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
+    const cuit = searchParams.get('cuit')
 
-    if (!id) {
+    if (!cuit) {
       return NextResponse.json(
-        { success: false, error: 'ID no proporcionado' },
+        { success: false, error: 'CUIT no proporcionado' },
         { status: 400 }
       )
     }
 
     await transaction.begin()
 
+    // Verificar que el proveedor existe
     const providerResult = await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        SELECT id_persona FROM Proveedor WHERE id_proveedor = @id_proveedor
+        SELECT cuit FROM PROVEEDOR WHERE cuit = @cuit
       `)
 
     if (providerResult.recordset.length === 0) {
@@ -398,58 +477,76 @@ export async function DELETE(request) {
       )
     }
 
-    const id_persona = providerResult.recordset[0].id_persona
-
+    // Eliminar en orden para evitar violaciones de clave foránea
+    
+    // 1. Eliminar calificaciones relacionadas (usando la relación correcta)
     await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Detalle_OC
+        DELETE FROM CALIFICACION 
         WHERE id_orden IN (
-          SELECT id_orden FROM Orden_De_Compra WHERE id_proveedor = @id_proveedor
+          SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
         )
       `)
 
+    // 2. Eliminar items de órdenes de compra
     await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Orden_De_Compra WHERE id_proveedor = @id_proveedor
+        DELETE FROM ITEM_ORDEN_DE_COMPRA
+        WHERE id_orden IN (
+          SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
+        )
       `)
 
+    // 3. Eliminar órdenes de compra
     await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Calificacion WHERE id_proveedor = @id_proveedor
+        DELETE FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
       `)
 
+    // 4. Eliminar contratos
     await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Falla_Proveedor WHERE id_proveedor = @id_proveedor
+        DELETE FROM CONTRATO WHERE cuit = @cuit
       `)
 
+    // 5. Eliminar técnicos
     await transaction
       .request()
-      .input('id_persona', sql.Int, id_persona)
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Direccion WHERE id_persona = @id_persona
+        DELETE FROM TECNICO WHERE cuit = @cuit
       `)
 
+    // 6. Eliminar relación con rubros
     await transaction
       .request()
-      .input('id_proveedor', sql.Int, parseInt(id, 10))
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Proveedor WHERE id_proveedor = @id_proveedor
+        DELETE FROM PROVEEDOR_RUBRO WHERE cuit = @cuit
       `)
 
+    // 7. Eliminar direcciones del proveedor
     await transaction
       .request()
-      .input('id_persona', sql.Int, id_persona)
+      .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM Persona WHERE id_persona = @id_persona
+        DELETE FROM DIRECCION WHERE cuit = @cuit
+      `)
+
+    // 8. Finalmente eliminar el proveedor
+    await transaction
+      .request()
+      .input('cuit', sql.BigInt, cuit)
+      .query(`
+        DELETE FROM PROVEEDOR WHERE cuit = @cuit
       `)
 
     await transaction.commit()

@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Eye, Pencil, Trash2, Phone, Mail } from "lucide-react"
+import { Search, Plus, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import TechnicianModal from "@/components/technicians/technician-modal"
 
 export default function TechniciansSection() {
   const [technicians, setTechnicians] = useState([])
-  const [specialties, setSpecialties] = useState([])
+  const [providers, setProviders] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingTechnician, setEditingTechnician] = useState(null)
@@ -24,24 +24,24 @@ export default function TechniciansSection() {
       setLoading(true)
       setError(null)
 
-      const [techniciansResponse, specialtiesResponse] = await Promise.all([
+      const [techniciansResponse, providersResponse] = await Promise.all([
         fetch("/api/technicians"),
-        fetch("/api/specialties"),
+        fetch("/api/providers?mode=options"),
       ])
 
       const techniciansJson = await techniciansResponse.json()
-      const specialtiesJson = await specialtiesResponse.json()
+      const providersJson = await providersResponse.json()
 
       if (!techniciansJson.success) {
         throw new Error(techniciansJson.error || "No se pudieron obtener los técnicos")
       }
 
-      if (!specialtiesJson.success) {
-        throw new Error(specialtiesJson.error || "No se pudieron obtener las especialidades")
+      if (!providersJson.success) {
+        throw new Error(providersJson.error || "No se pudieron obtener los proveedores")
       }
 
       setTechnicians(techniciansJson.data)
-      setSpecialties(specialtiesJson.data)
+      setProviders(providersJson.data)
     } catch (err) {
       console.error("Error fetching technicians data:", err)
       setError(err.message)
@@ -55,11 +55,10 @@ export default function TechniciansSection() {
     if (!term) return technicians
 
     return technicians.filter((tech) => {
-      const specialtiesNames = (tech.especialidades || []).map((s) => s.nombre.toLowerCase()).join(" ")
       return (
         tech.nombre.toLowerCase().includes(term) ||
-        (tech.documento || "").toLowerCase().includes(term) ||
-        specialtiesNames.includes(term)
+        (tech.proveedor || "").toLowerCase().includes(term) ||
+        (tech.telefono || "").toLowerCase().includes(term)
       )
     })
   }, [technicians, searchTerm])
@@ -159,7 +158,7 @@ export default function TechniciansSection() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Buscar por nombre, documento o especialidad..."
+          placeholder="Buscar por nombre, proveedor o teléfono..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -168,70 +167,27 @@ export default function TechniciansSection() {
 
       <div className="bg-card rounded-lg border border-border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px]">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-muted">
               <tr>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Proveedor</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Nombre</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Documento</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Contacto</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Especialidades</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Teléfono</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {filteredTechnicians.map((tech) => (
                 <tr key={tech.id_tecnico} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-foreground font-medium">{tech.nombre}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{tech.documento || "-"}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    <div className="flex flex-col gap-1">
-                      {tech.telefono && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          <span className="text-xs">{tech.telefono}</span>
-                        </div>
-                      )}
-                      {tech.correo && (
-                        <div className="flex items-center gap-1">
-                          <Mail className="w-3 h-3" />
-                          <span className="text-xs">{tech.correo}</span>
-                        </div>
-                      )}
-                      {!tech.telefono && !tech.correo && <span className="text-xs text-muted-foreground">Sin contacto</span>}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground max-w-sm">
-                    {tech.especialidades && tech.especialidades.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {tech.especialidades.map((esp) => (
-                          <span
-                            key={esp.id_especialidad}
-                            className="px-2 py-1 rounded-full bg-muted text-xs text-muted-foreground"
-                          >
-                            {esp.nombre}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sin especialidades asociadas</span>
-                    )}
-                  </td>
+                  <td className="px-6 py-4 text-sm text-foreground font-medium">{tech.proveedor || "-"}</td>
+                  <td className="px-6 py-4 text-sm text-foreground">{tech.nombre}</td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">{tech.telefono || "-"}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          const list = tech.especialidades?.map((esp) => `• ${esp.nombre}`).join('\n') || 'Sin especialidades'
-                          alert(`Técnico: ${tech.nombre}\nDocumento: ${tech.documento || '-'}\nCorreo: ${tech.correo || '-'}\nTeléfono: ${tech.telefono || '-'}\n\nEspecialidades:\n${list}`)
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(tech)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(tech)} title="Editar técnico">
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(tech)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(tech)} title="Eliminar técnico">
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </div>
@@ -257,7 +213,7 @@ export default function TechniciansSection() {
         }}
         onSave={handleSaveTechnician}
         technician={editingTechnician}
-        specialties={specialties}
+        providers={providers}
       />
     </div>
   )

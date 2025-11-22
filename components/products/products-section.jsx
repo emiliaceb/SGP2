@@ -7,18 +7,19 @@ import { Input } from "@/components/ui/input"
 import ProductModal from "@/components/products/product-modal"
 
 export default function ProductsSection() {
-  const [products, setProducts] = useState([])
+  const [equipos, setEquipos] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingProduct, setEditingProduct] = useState(null)
+  const [editingEquipo, setEditingEquipo] = useState(null)
+  const [viewMode, setViewMode] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchProducts()
+    fetchEquipos()
   }, [])
 
-  const fetchProducts = async () => {
+  const fetchEquipos = async () => {
     try {
       setLoading(true)
       setError(null)
@@ -27,33 +28,35 @@ export default function ProductsSection() {
       const data = await response.json()
 
       if (!data.success) {
-        throw new Error(data.error || "No se pudieron obtener los productos")
+        throw new Error(data.error || "No se pudieron obtener los equipos")
       }
 
-      setProducts(data.data)
+      setEquipos(data.data)
     } catch (err) {
-      console.error("Error fetching products:", err)
+      console.error("Error fetching equipos:", err)
       setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredProducts = useMemo(() => {
+  const filteredEquipos = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
-    if (!term) return products
+    if (!term) return equipos
 
-    return products.filter((product) => {
+    return equipos.filter((equipo) => {
       return (
-        product.nombre_producto.toLowerCase().includes(term) ||
-        (product.descripcion || "").toLowerCase().includes(term)
+        (equipo.numero_serie || "").toLowerCase().includes(term) ||
+        (equipo.descripcion || "").toLowerCase().includes(term) ||
+        (equipo.proveedor || "").toLowerCase().includes(term) ||
+        equipo.id_equipo.toString().includes(term)
       )
     })
-  }, [products, searchTerm])
+  }, [equipos, searchTerm])
 
-  const handleSaveProduct = async (payload) => {
+  const handleSaveEquipo = async (payload) => {
     try {
-      const method = payload.id_producto ? "PUT" : "POST"
+      const method = payload.id_equipo ? "PUT" : "POST"
       const response = await fetch("/api/products", {
         method,
         headers: { "Content-Type": "application/json" },
@@ -63,44 +66,45 @@ export default function ProductsSection() {
       const data = await response.json()
 
       if (!data.success) {
-        throw new Error(data.error || "No se pudo guardar el producto")
+        throw new Error(data.error || "No se pudo guardar el equipo")
       }
 
-      if (payload.id_producto) {
-        setProducts((prev) =>
-          prev.map((product) => (product.id_producto === data.data.id_producto ? data.data : product))
+      if (payload.id_equipo) {
+        setEquipos((prev) =>
+          prev.map((equipo) => (equipo.id_equipo === data.data.id_equipo ? data.data : equipo))
         )
       } else {
-        setProducts((prev) => [data.data, ...prev])
+        setEquipos((prev) => [data.data, ...prev])
       }
 
       setIsModalOpen(false)
-      setEditingProduct(null)
+      setEditingEquipo(null)
+      setViewMode(false)
     } catch (err) {
-      console.error("Error saving product:", err)
+      console.error("Error saving equipo:", err)
       alert(err.message)
     }
   }
 
-  const handleDelete = async (product) => {
-    if (!confirm(`¿Eliminar definitivamente "${product.nombre_producto}"?`)) {
+  const handleDelete = async (equipo) => {
+    if (!confirm(`¿Eliminar definitivamente el equipo #${equipo.id_equipo}?`)) {
       return
     }
 
     try {
-      const response = await fetch(`/api/products?id=${product.id_producto}`, {
+      const response = await fetch(`/api/products?id=${equipo.id_equipo}`, {
         method: "DELETE",
       })
 
       const data = await response.json()
 
       if (!data.success) {
-        throw new Error(data.error || "No se pudo eliminar el producto")
+        throw new Error(data.error || "No se pudo eliminar el equipo")
       }
 
-      setProducts((prev) => prev.filter((item) => item.id_producto !== product.id_producto))
+      setEquipos((prev) => prev.filter((item) => item.id_equipo !== equipo.id_equipo))
     } catch (err) {
-      console.error("Error deleting product:", err)
+      console.error("Error deleting equipo:", err)
       alert(err.message)
     }
   }
@@ -108,7 +112,7 @@ export default function ProductsSection() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <p className="text-muted-foreground">Cargando productos...</p>
+        <p className="text-muted-foreground">Cargando equipos...</p>
       </div>
     )
   }
@@ -117,7 +121,7 @@ export default function ProductsSection() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <p className="text-red-600">{error}</p>
-        <Button onClick={fetchProducts}>Reintentar</Button>
+        <Button onClick={fetchEquipos}>Reintentar</Button>
       </div>
     )
   }
@@ -125,15 +129,16 @@ export default function ProductsSection() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Productos</h1>
+        <h1 className="text-3xl font-bold text-foreground">Equipos</h1>
         <Button
           onClick={() => {
-            setEditingProduct(null)
+            setEditingEquipo(null)
+            setViewMode(false)
             setIsModalOpen(true)
           }}
         >
           <Plus className="w-4 h-4 mr-2" />
-          Nuevo producto
+          Nuevo equipo
         </Button>
       </div>
 
@@ -141,7 +146,7 @@ export default function ProductsSection() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Buscar por nombre o descripción..."
+          placeholder="Buscar por ID, número de serie, descripción o proveedor..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -150,20 +155,52 @@ export default function ProductsSection() {
 
       <div className="bg-card rounded-lg border border-border overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-[1100px]">
             <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Nombre</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">ID Orden</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">ID Item</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Descripción</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Proveedor</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">ID Equipo</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Expiración Garantía</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Estado</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredProducts.map((product) => (
-                <tr key={product.id_producto} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-foreground font-medium">{product.nombre_producto}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground max-w-xl">
-                    <span className="line-clamp-2">{product.descripcion || "Sin descripción"}</span>
+              {filteredEquipos.map((equipo) => (
+                <tr key={equipo.id_equipo} className="hover:bg-muted/50 transition-colors">
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {equipo.id_orden ? `#${equipo.id_orden}` : "-"}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {equipo.id_item || "-"}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-foreground">
+                    {equipo.descripcion || "Sin descripción"}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {equipo.proveedor || "-"}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-foreground font-medium">
+                    #{equipo.id_equipo}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {equipo.expiracion_garantia 
+                      ? new Date(equipo.expiracion_garantia).toLocaleDateString("es-AR")
+                      : "-"}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      equipo.estado === "OPERATIVO"
+                        ? "bg-green-100 text-green-800"
+                        : equipo.estado === "MANTENIMIENTO"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}>
+                      {equipo.estado}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
@@ -171,7 +208,9 @@ export default function ProductsSection() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          alert(`Producto: ${product.nombre_producto}\nDescripción: ${product.descripcion || "Sin descripción"}`)
+                          setEditingEquipo(equipo)
+                          setViewMode(true)
+                          setIsModalOpen(true)
                         }}
                       >
                         <Eye className="w-4 h-4" />
@@ -180,13 +219,14 @@ export default function ProductsSection() {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          setEditingProduct(product)
+                          setEditingEquipo(equipo)
+                          setViewMode(false)
                           setIsModalOpen(true)
                         }}
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(product)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(equipo)}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </div>
@@ -197,9 +237,9 @@ export default function ProductsSection() {
           </table>
         </div>
 
-        {filteredProducts.length === 0 && (
+        {filteredEquipos.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">No se encontraron productos</p>
+            <p className="text-muted-foreground">No se encontraron equipos</p>
           </div>
         )}
       </div>
@@ -208,10 +248,12 @@ export default function ProductsSection() {
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
-          setEditingProduct(null)
+          setEditingEquipo(null)
+          setViewMode(false)
         }}
-        onSave={handleSaveProduct}
-        product={editingProduct}
+        onSave={handleSaveEquipo}
+        equipo={editingEquipo}
+        viewMode={viewMode}
       />
     </div>
   )

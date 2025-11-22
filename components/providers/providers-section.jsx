@@ -1,46 +1,47 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Pencil, Trash2, Star, MapPin, Mail, Phone } from "lucide-react"
+import { Search, Plus, Pencil, Trash2, Star, MapPin, Mail, Phone, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import ProviderModal from "@/components/providers/provider-modal"
 
-const formatDate = (value) => {
-  if (!value) return "-"
-  return new Date(value).toLocaleDateString("es-AR")
-}
-
 const formatAddress = (provider) => {
-  if (!provider.calle) return "Sin dirección registrada"
-  const parts = [provider.calle]
-  if (provider.numero) parts.push(`#${provider.numero}`)
-  if (provider.departamento) parts.push(`Depto. ${provider.departamento}`)
-  if (provider.codigo_postal) parts.push(`CP ${provider.codigo_postal}`)
-  return parts.join(" ")
+  if (!provider.direccion || 
+      provider.direccion === 'null null (null)' || 
+      provider.direccion === 'Sin dirección registrada' ||
+      provider.direccion.trim() === '') {
+    return "Sin dirección registrada"
+  }
+  return provider.direccion
 }
 
-const renderAverage = (value) => {
-  if (value === null || value === undefined) {
-    return <span className="text-xs text-muted-foreground">Sin datos</span>
+const formatContact = (provider) => {
+  const contacts = []
+  if (provider.telefono) {
+    contacts.push(`Tel: ${provider.telefono}`)
   }
-
-  const numeric = Number(value)
-  if (Number.isNaN(numeric)) {
-    return <span className="text-xs text-muted-foreground">Sin datos</span>
+  if (provider.email) {
+    contacts.push(`Email: ${provider.email}`)
   }
+  return contacts.length > 0 ? contacts.join(' | ') : "Sin contacto"
+}
 
+const renderStars = (value) => {
+  const numericValue = Number(value) || 0
+  const roundedValue = Math.round(numericValue)
+  
   return (
     <div className="flex items-center gap-2">
       <div className="flex gap-0.5">
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
-            className={`w-4 h-4 ${star <= Math.round(numeric) ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
+            className={`w-4 h-4 ${star <= roundedValue ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
           />
         ))}
       </div>
-      <span className="text-xs text-muted-foreground">{numeric.toFixed(1)}/5</span>
+      <span className="text-xs text-muted-foreground">{numericValue.toFixed(1)}/5</span>
     </div>
   )
 }
@@ -50,6 +51,7 @@ export default function ProvidersSection() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState(null)
+  const [viewMode, setViewMode] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -83,9 +85,10 @@ export default function ProvidersSection() {
 
     return providers.filter((provider) => {
       return (
-        provider.nombre.toLowerCase().includes(term) ||
-        (provider.documento || "").toLowerCase().includes(term) ||
-        (provider.correo || "").toLowerCase().includes(term)
+        provider.razon_social?.toLowerCase().includes(term) ||
+        (provider.cuit || "").toLowerCase().includes(term) ||
+        (provider.email || "").toLowerCase().includes(term) ||
+        (provider.rubros || "").toLowerCase().includes(term)
       )
     })
   }, [providers, searchTerm])
@@ -107,7 +110,7 @@ export default function ProvidersSection() {
 
       if (editingProvider) {
         setProviders((prev) =>
-          prev.map((provider) => (provider.id_proveedor === data.data.id_proveedor ? data.data : provider))
+          prev.map((provider) => (provider.cuit === data.data.cuit ? data.data : provider))
         )
       } else {
         setProviders((prev) => [...prev, data.data])
@@ -122,12 +125,12 @@ export default function ProvidersSection() {
   }
 
   const handleDelete = async (provider) => {
-    if (!confirm(`¿Eliminar definitivamente a ${provider.nombre}? Esta acción no se puede deshacer.`)) {
+    if (!confirm(`¿Eliminar definitivamente a ${provider.razon_social}? Esta acción no se puede deshacer.`)) {
       return
     }
 
     try {
-      const response = await fetch(`/api/providers?id=${provider.id_proveedor}`, {
+      const response = await fetch(`/api/providers?cuit=${provider.cuit}`, {
         method: "DELETE",
       })
 
@@ -137,7 +140,7 @@ export default function ProvidersSection() {
         throw new Error(data.error || "No se pudo eliminar el proveedor")
       }
 
-      setProviders((prev) => prev.filter((item) => item.id_proveedor !== provider.id_proveedor))
+      setProviders((prev) => prev.filter((item) => item.cuit !== provider.cuit))
     } catch (err) {
       console.error("Error deleting provider:", err)
       alert(err.message)
@@ -168,6 +171,7 @@ export default function ProvidersSection() {
         <Button
           onClick={() => {
             setEditingProvider(null)
+            setViewMode(false)
             setIsModalOpen(true)
           }}
         >
@@ -180,7 +184,7 @@ export default function ProvidersSection() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="Buscar por nombre, documento o correo..."
+          placeholder="Buscar por razón social, CUIT, email o rubro..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -192,75 +196,74 @@ export default function ProvidersSection() {
           <table className="w-full min-w-[960px]">
             <thead className="bg-muted">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Nombre</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Documento</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Razón Social</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">CUIT</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Contacto</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Rubro</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Dirección</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha alta</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Promedio</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Última calificación</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Calificación</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredProviders.map((provider) => (
-                <tr key={provider.id_proveedor} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-foreground font-medium">{provider.nombre}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{provider.documento || "-"}</td>
+              {filteredProviders.map((provider, index) => (
+                <tr key={`${provider.cuit}-${index}`} className="hover:bg-muted/50 transition-colors">
+                  <td className="px-6 py-4 text-sm text-foreground font-medium">{provider.razon_social || "-"}</td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground font-mono">{provider.cuit || "-"}</td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
-                    <div className="flex flex-col gap-1">
-                      {provider.correo && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <Mail className="w-3 h-3" />
-                          <span>{provider.correo}</span>
-                        </div>
-                      )}
-                      {provider.telefono && (
-                        <div className="flex items-center gap-2 text-xs">
-                          <Phone className="w-3 h-3" />
-                          <span>{provider.telefono}</span>
-                        </div>
-                      )}
-                      {!provider.correo && !provider.telefono && (
-                        <span className="text-xs text-muted-foreground">Sin contacto</span>
-                      )}
+                    <div className="text-xs max-w-[200px]">
+                      {formatContact(provider)}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
-                    <div className="flex items-start gap-2 text-xs">
-                      <MapPin className="w-3 h-3 mt-0.5" />
-                      <span>{formatAddress(provider)}</span>
+                    <div className="text-xs max-w-[150px] truncate" title={provider.rubros}>
+                      {provider.rubros || "Sin rubro"}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{formatDate(provider.fecha_alta)}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">{renderAverage(provider.promedio_puntaje)}</td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {provider.ultima_puntaje !== null && provider.ultima_puntaje !== undefined ? (
-                      <div className="flex flex-col text-xs">
-                        <span className="font-semibold text-foreground">{Number(provider.ultima_puntaje).toFixed(1)}/5</span>
-                        <span>{formatDate(provider.ultima_fecha)}</span>
-                        {provider.ultima_comentario && (
-                          <span className="text-muted-foreground line-clamp-2">{provider.ultima_comentario}</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sin registros</span>
-                    )}
+                    <div className="flex items-start gap-2 text-xs max-w-[200px]">
+                      <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span className="truncate" title={formatAddress(provider)}>
+                        {formatAddress(provider)}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-muted-foreground">
+                    {renderStars(provider.calificacion_total_promedio)}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(provider)}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingProvider(provider)
+                          setViewMode(true)
+                          setIsModalOpen(true)
+                        }}
+                        title="Ver detalles"
+                      >
+                        <Eye className="w-4 h-4 text-blue-600" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           setEditingProvider(provider)
+                          setViewMode(false)
                           setIsModalOpen(true)
                         }}
+                        title="Editar proveedor"
                       >
                         <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleDelete(provider)}
+                        title="Eliminar proveedor"
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </div>
                   </td>
@@ -282,9 +285,12 @@ export default function ProvidersSection() {
         onClose={() => {
           setIsModalOpen(false)
           setEditingProvider(null)
+          setViewMode(false)
         }}
         onSave={handleSaveProvider}
         provider={editingProvider}
+        onDataChange={fetchProviders}
+        viewMode={viewMode}
       />
     </div>
   )

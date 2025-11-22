@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 const menuItems = [
   { id: "proveedores", label: "Proveedores", icon: FolderOpen },
   { id: "ordenes", label: "Órdenes de compra", icon: ShoppingCart },
-  { id: "productos", label: "Catálogo de productos", icon: Package },
+  { id: "productos", label: "Equipos adquiridos", icon: Package },
   { id: "tecnicos", label: "Técnicos", icon: Wrench },
   { id: "calificaciones", label: "Calificaciones", icon: Star },
   { id: "incidencias", label: "Fallas registradas", icon: AlertTriangle },
