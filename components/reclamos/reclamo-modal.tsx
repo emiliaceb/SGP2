@@ -32,7 +32,7 @@ export default function ReclamoModal({ isOpen, onClose, reclamo, mode }: Reclamo
     fecha_reporte: "",
     descripcion: "",
     prioridad: "MEDIA",
-    estado: "ABIERTO",
+    estado: "PENDIENTE",
   });
 
   const [empleados, setEmpleados] = useState<any[]>([]);
@@ -50,7 +50,7 @@ export default function ReclamoModal({ isOpen, onClose, reclamo, mode }: Reclamo
           fecha_reporte: reclamo.fecha_reporte?.split("T")[0] || "",
           descripcion: reclamo.descripcion || "",
           prioridad: reclamo.prioridad || "MEDIA",
-          estado: reclamo.estado || "ABIERTO",
+          estado: reclamo.estado || "PENDIENTE",
         });
       } else {
         setFormData({
@@ -60,7 +60,7 @@ export default function ReclamoModal({ isOpen, onClose, reclamo, mode }: Reclamo
           fecha_reporte: new Date().toISOString().split("T")[0],
           descripcion: "",
           prioridad: "MEDIA",
-          estado: "ABIERTO",
+          estado: "PENDIENTE",
         });
       }
     }
@@ -116,6 +116,33 @@ export default function ReclamoModal({ isOpen, onClose, reclamo, mode }: Reclamo
       const data = await res.json();
 
       if (data.success) {
+        // Recalcular calificación del proveedor si el reclamo está asociado a una orden
+        if (formData.id_orden) {
+          try {
+            // Obtener el CUIT del proveedor de la orden
+            const ordenRes = await fetch(`/api/orders`);
+            const ordenData = await ordenRes.json();
+            
+            if (ordenData.success) {
+              const orden = ordenData.data.find((o: any) => o.id_orden === parseInt(formData.id_orden));
+              
+              if (orden && orden.cuit) {
+                // Recalcular la calificación del proveedor
+                await fetch('/api/ratings/calculate', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ cuit: Number(orden.cuit) }),
+                });
+              }
+            }
+          } catch (error) {
+            console.error('Error al recalcular calificación:', error);
+            // No mostramos error al usuario, solo lo loggeamos
+          }
+        }
+        
         onClose();
       } else {
         alert(data.error || "Error al guardar el reclamo");
@@ -229,12 +256,9 @@ export default function ReclamoModal({ isOpen, onClose, reclamo, mode }: Reclamo
               className="w-full border px-3 py-2 rounded"
               required
             >
-              <option value="ABIERTO">Abierto</option>
+              <option value="PENDIENTE">Pendiente</option>
               <option value="ASIGNADO">Asignado</option>
-              <option value="EN ESPERA">En Espera</option>
-              <option value="RESUELTO">Resuelto</option>
               <option value="CERRADO">Cerrado</option>
-              <option value="ANULADO">Anulado</option>
             </select>
           </div>
 

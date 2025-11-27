@@ -179,8 +179,8 @@ CREATE TABLE RECLAMO (
     -- Restricción CHECK para la Prioridad
     CONSTRAINT CHK_PrioridadReclamo CHECK (prioridad IN ('ALTA', 'MEDIA', 'BAJA')),
     
-    -- Restricción CHECK para los Estados del Reclamo
-    CONSTRAINT CHK_EstadoReclamo CHECK (estado IN ('ABIERTO', 'ASIGNADO', 'EN ESPERA', 'RESUELTO', 'CERRADO', 'ANULADO')),
+    -- Restricción CHECK para los Estados del Reclamo (solo 3 estados)
+    CONSTRAINT CHK_EstadoReclamo CHECK (estado IN ('PENDIENTE', 'ASIGNADO', 'CERRADO')),
     
     -- Restricción Lógica: El reclamo DEBE ser sobre un EQUIPO O una ORDEN
     CONSTRAINT CHK_ReclamoObjeto CHECK (id_equipo IS NOT NULL OR id_orden IS NOT NULL)
