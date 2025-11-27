@@ -16,9 +16,11 @@ export default function InformationSection() {
         setContratosVencidos(dataContratos)
       }
       
-      // TODO: Implementar endpoint de garantías
-      // const responseGarantias = await fetch('/api/equipos/garantias-vencidas')
-      setGarantiasVencidas([])
+      const responseGarantias = await fetch('/api/equipos/garantias-vencidas')
+      if (responseGarantias.ok) {
+        const dataGarantias = await responseGarantias.json()
+        setGarantiasVencidas(dataGarantias)
+      }
     } catch (error) {
       console.error("Error al cargar vencimientos:", error)
     } finally {
@@ -156,22 +158,34 @@ export default function InformationSection() {
                   </p>
                 ) : (
                   garantiasVencidas.map((equipo) => (
-                    <div key={equipo.id} className="p-4 bg-gray-50 rounded-lg border">
+                    <div key={equipo.id_equipo} className="p-4 bg-gray-50 rounded-lg border">
                       <div className="space-y-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium">{equipo.tipo}</p>
+                            <p className="font-medium">{equipo.marca} {equipo.modelo}</p>
                             <p className="text-sm text-gray-600">
                               N° Serie: {equipo.numero_serie}
                             </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {equipo.descripcion_item}
+                            </p>
                           </div>
-                          <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">
-                            Vence pronto
+                          <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                            equipo.dias_para_vencer <= 30 
+                              ? 'bg-red-50 text-red-700 ring-red-600/10' 
+                              : equipo.dias_para_vencer <= 60 
+                              ? 'bg-yellow-50 text-yellow-700 ring-yellow-600/10'
+                              : 'bg-orange-50 text-orange-700 ring-orange-600/10'
+                          }`}>
+                            {equipo.dias_para_vencer} días
                           </span>
                         </div>
-                        <p className="text-sm text-gray-700">
-                          Garantía vence: {equipo.fecha_vencimiento_garantia}
-                        </p>
+                        <div className="text-sm text-gray-700">
+                          <p>Garantía vence: {new Date(equipo.expiracion_garantia).toLocaleDateString('es-AR')}</p>
+                          <p>Estado: <span className={`font-medium ${
+                            equipo.estado === 'OPERATIVO' ? 'text-green-600' : 'text-yellow-600'
+                          }`}>{equipo.estado}</span></p>
+                        </div>
                       </div>
                     </div>
                   ))
