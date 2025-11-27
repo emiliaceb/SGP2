@@ -1,6 +1,6 @@
 "use client"
 
-import { FolderOpen, ShoppingCart, Package, Wrench, Star, AlertTriangle, BarChart3 } from "lucide-react"
+import { FolderOpen, ShoppingCart, Package, Wrench, Star, AlertTriangle, BarChart3, Hammer, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const menuItems = [
@@ -9,8 +9,10 @@ const menuItems = [
   { id: "productos", label: "Equipos adquiridos", icon: Package },
   { id: "tecnicos", label: "Técnicos", icon: Wrench },
   { id: "calificaciones", label: "Calificaciones", icon: Star },
-  { id: "incidencias", label: "Fallas registradas", icon: AlertTriangle },
-  { id: "reportes", label: "Reportes", icon: BarChart3 },
+  { id: "reportes", label: "Reclamos", icon: AlertTriangle },
+  { id: "intervencion", label: "Intervencion", icon: Hammer },
+  { id: "contratos", label: "Contratos", icon: FileText },
+  { id: "informes", label: "Informes", icon: BarChart3 },
 ]
 
 export default function Sidebar({ activeSection, setActiveSection }) {

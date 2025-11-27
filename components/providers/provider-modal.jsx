@@ -285,7 +285,7 @@ export default function ProviderModal({ isOpen, onClose, onSave, provider, onDat
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium">Direcciones</h3>
-              {provider && !viewMode && (
+              {!viewMode && (
                 <Button
                   type="button"
                   variant="outline"
@@ -294,13 +294,19 @@ export default function ProviderModal({ isOpen, onClose, onSave, provider, onDat
                   className="flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  Agregar Dirección
+                  {provider ? "Agregar Dirección" : "Agregar Dirección (opcional)"}
                 </Button>
               )}
             </div>
 
             {/* Formulario para nueva dirección */}
-            {showAddressForm && (
+            {!provider && showAddressForm && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-md text-sm text-blue-800 dark:text-blue-200">
+                💡 Primero guarda el proveedor, luego podrás agregar direcciones
+              </div>
+            )}
+            
+            {provider && showAddressForm && (
               <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/20">
                 <h4 className="text-md font-medium">Nueva Dirección</h4>
                 

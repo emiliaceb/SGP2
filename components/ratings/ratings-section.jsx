@@ -1,14 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Eye, Pencil, Trash2, Star, MessageSquare } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Plus, Eye, Pencil, Trash2, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import RatingModal from "@/components/ratings/rating-modal"
 
 export default function RatingsSection() {
   const [ratings, setRatings] = useState([])
-  const [providers, setProviders] = useState([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingRating, setEditingRating] = useState(null)
@@ -24,24 +22,14 @@ export default function RatingsSection() {
       setLoading(true)
       setError(null)
 
-      const [ratingsResponse, providersResponse] = await Promise.all([
-        fetch("/api/ratings"),
-        fetch("/api/providers?mode=options"),
-      ])
-
+      const ratingsResponse = await fetch("/api/ratings")
       const ratingsJson = await ratingsResponse.json()
-      const providersJson = await providersResponse.json()
 
       if (!ratingsJson.success) {
         throw new Error(ratingsJson.error || "No se pudieron obtener las calificaciones")
       }
 
-      if (!providersJson.success) {
-        throw new Error(providersJson.error || "No se pudieron obtener los proveedores")
-      }
-
-      setRatings(ratingsJson.data)
-      setProviders(providersJson.data)
+      setRatings(ratingsJson.data || [])
     } catch (err) {
       console.error("Error fetching ratings data:", err)
       setError(err.message)
@@ -50,17 +38,15 @@ export default function RatingsSection() {
     }
   }
 
-  const filteredRatings = useMemo(() => {
+  const filteredRatings = ratings.filter((rating) => {
     const term = searchTerm.trim().toLowerCase()
-    if (!term) return ratings
+    if (!term) return true
 
-    return ratings.filter((rating) => {
-      return (
-        rating.proveedor_nombre.toLowerCase().includes(term) ||
-        (rating.comentarios || "").toLowerCase().includes(term)
-      )
-    })
-  }, [ratings, searchTerm])
+    return (
+      rating.proveedor_nombre?.toLowerCase().includes(term) ||
+      (rating.comentarios || "").toLowerCase().includes(term)
+    )
+  })
 
   const handleSaveRating = async (payload) => {
     try {
@@ -144,122 +130,130 @@ export default function RatingsSection() {
     return "text-red-600 font-semibold"
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-muted-foreground">Cargando calificaciones...</p>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <p className="text-red-600">{error}</p>
-        <Button onClick={fetchData}>Reintentar</Button>
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-foreground">Calificaciones</h1>
-        <Button
-          onClick={() => {
-            setEditingRating(null)
-            setIsModalOpen(true)
-          }}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Nueva calificación
+    <div className="p-6 bg-white rounded-lg shadow-md">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Calificaciones</h2>
+        <Button onClick={() => {
+          setEditingRating(null)
+          setIsModalOpen(true)
+        }} className="flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Nueva Calificación
         </Button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-        <Input
+      <div className="mb-4">
+        <input
           type="text"
           placeholder="Buscar por proveedor o comentarios..."
+          className="w-full border px-4 py-2 rounded"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
         />
       </div>
 
-      <div className="bg-card rounded-lg border border-border overflow-hidden shadow-sm">
+      {loading ? (
+        <p className="text-center py-8">Cargando...</p>
+      ) : error ? (
+        <div className="text-center py-8">
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={fetchData}>Reintentar</Button>
+        </div>
+      ) : (
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted">
+          <table className="min-w-full border">
+            <thead className="bg-gray-100">
               <tr>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Proveedor</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Fecha</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Calificación</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Comentarios</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-foreground">Acciones</th>
+                <th className="border px-4 py-2 text-left">Proveedor</th>
+                <th className="border px-4 py-2 text-left">Plazo</th>
+                <th className="border px-4 py-2 text-left">Tiempo Respuesta</th>
+                <th className="border px-4 py-2 text-left">Disponibilidad</th>
+                <th className="border px-4 py-2 text-left">Comentarios</th>
+                <th className="border px-4 py-2 text-left">Calificación</th>
+                <th className="border px-4 py-2 text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {filteredRatings.map((rating) => (
-                <tr key={rating.id_calificacion} className="hover:bg-muted/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-foreground font-medium">{rating.proveedor_nombre}</td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {rating.fecha_evaluacion ? new Date(rating.fecha_evaluacion).toLocaleDateString("es-AR") : "-"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col gap-1">
-                      {renderStars(rating.puntaje)}
-                      <span className={`text-xs ${getScoreColor(rating.puntaje)}`}>
-                        {rating.puntaje}/5
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs">
-                    <div className="flex items-start gap-2">
-                      <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-2">{rating.comentarios || "Sin comentarios"}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => alert(`Proveedor: ${rating.proveedor_nombre}\nPuntaje: ${rating.puntaje}/5\nComentarios: ${rating.comentarios || "Sin comentarios"}`)}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(rating)}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(rating)}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+            <tbody>
+              {filteredRatings.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center py-4">
+                    No se encontraron calificaciones
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredRatings.map((rating) => (
+                  <tr key={rating.id_calificacion}>
+                    <td className="border px-4 py-2">{rating.proveedor_nombre}</td>
+                    <td className="border px-4 py-2">
+                      <div className="flex flex-col gap-1">
+                        {renderStars(rating.puntaje_plazo)}
+                        <span className={`text-xs ${getScoreColor(rating.puntaje_plazo)}`}>
+                          {rating.puntaje_plazo || 0}/5
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border px-4 py-2">
+                      <div className="flex flex-col gap-1">
+                        {renderStars(rating.puntaje_tiempo_respuesta)}
+                        <span className={`text-xs ${getScoreColor(rating.puntaje_tiempo_respuesta)}`}>
+                          {rating.puntaje_tiempo_respuesta || 0}/5
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border px-4 py-2">
+                      <div className="flex flex-col gap-1">
+                        {renderStars(rating.puntaje_disponibilidad)}
+                        <span className={`text-xs ${getScoreColor(rating.puntaje_disponibilidad)}`}>
+                          {rating.puntaje_disponibilidad || 0}/5
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border px-4 py-2">{rating.comentarios || "Sin comentarios"}</td>
+                    <td className="border px-4 py-2">
+                      <div className="flex flex-col gap-1">
+                        {renderStars(rating.puntuacion_total)}
+                        <span className={`text-xs ${getScoreColor(rating.puntuacion_total)}`}>
+                          {rating.puntuacion_total || 0}/5
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border px-4 py-2">
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => alert(`Proveedor: ${rating.proveedor_nombre}\nPlazo: ${rating.puntaje_plazo || 0}/5\nCalidad: ${rating.puntaje_calidad || 0}/5\nTiempo Respuesta: ${rating.puntaje_tiempo_respuesta || 0}/5\nDisponibilidad: ${rating.puntaje_disponibilidad || 0}/5\nTotal: ${rating.puntuacion_total || 0}/5\nComentarios: ${rating.comentarios || "Sin comentarios"}`)}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleEdit(rating)}>
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(rating)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+      )}
 
-        {filteredRatings.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No se encontraron calificaciones</p>
-          </div>
-        )}
-      </div>
-
-      <RatingModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false)
-          setEditingRating(null)
-        }}
-        onSave={handleSaveRating}
-        rating={editingRating}
-        providers={providers}
-      />
+      {isModalOpen && (
+        <RatingModal
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false)
+            setEditingRating(null)
+          }}
+          onSave={handleSaveRating}
+          rating={editingRating}
+        />
+      )}
     </div>
   )
 }

@@ -186,17 +186,17 @@ CREATE TABLE RECLAMO (
     CONSTRAINT CHK_ReclamoObjeto CHECK (id_equipo IS NOT NULL OR id_orden IS NOT NULL)
 );
 
--- 17. CALIFICACION (Depende de ORDEN_DE_COMPRA)
+-- 17. CALIFICACION (Depende de PROVEEDOR)
 CREATE TABLE CALIFICACION (
     id_calificacion INT IDENTITY(1,1) PRIMARY KEY,
-    id_orden INT NOT NULL UNIQUE, -- Se asume 1 calificación por orden
+    cuit BIGINT NOT NULL,
     puntaje_plazo TINYINT,
     puntaje_calidad TINYINT,
     puntaje_tiempo_respuesta TINYINT,
     puntaje_disponibilidad TINYINT,
     comentarios NVARCHAR(600),
     puntuacion_total TINYINT,
-    CONSTRAINT FK_CALIFICACION_ORDEN FOREIGN KEY (id_orden) REFERENCES ORDEN_DE_COMPRA(id_orden)
+    CONSTRAINT FK_CALIFICACION_PROVEEDOR FOREIGN KEY (cuit) REFERENCES PROVEEDOR(cuit)
 );
 
 -- 18. INTERVENCION (Depende de EQUIPO y TECNICO)

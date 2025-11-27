@@ -8,8 +8,11 @@ import OrdersSection from "@/components/orders/orders-section"
 import ProductsSection from "@/components/products/products-section"
 import TechniciansSection from "@/components/technicians/technicians-section"
 import RatingsSection from "@/components/ratings/ratings-section"
-import ReportsSection from "@/components/reports/reports-section"
-import SupplierFailureSection from "@/components/supplierFailure/supplierFailure-section"
+import ReportsSection from "@/components/Reports/Reports-section"
+import InformationSection from "@/components/Information/Information-section"
+import ReclamosSection from "@/components/reclamos/reclamos-section"
+import IntervencionSection from "@/components/Intervencion/Intervencion-section"
+import ContratosSection from "@/components/contratos/contratos-section"
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState("proveedores")
@@ -27,8 +30,10 @@ export default function Home() {
           {activeSection === "productos" && <ProductsSection />}
           {activeSection === "tecnicos" && <TechniciansSection />}
           {activeSection === "calificaciones" && <RatingsSection />}
-          {activeSection === "incidencias" && <SupplierFailureSection />}
-          {activeSection === "reportes" && <ReportsSection />}
+          {activeSection === "reportes" && <ReclamosSection />}
+          {activeSection === "intervencion" && <IntervencionSection />}
+          {activeSection === "contratos" && <ContratosSection />}
+          {activeSection === "informes" && <InformationSection />}
         </main>
       </div>
     </div>

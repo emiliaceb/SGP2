@@ -4,21 +4,23 @@ import { NextResponse } from 'next/server'
 const selectQuery = `
   SELECT 
     c.id_calificacion,
-    c.fecha_evaluacion,
-    c.puntaje,
+    c.cuit,
+    c.puntaje_plazo,
+    c.puntaje_calidad,
+    c.puntaje_tiempo_respuesta,
+    c.puntaje_disponibilidad,
     c.comentarios,
-    c.id_proveedor,
-    per.nombre AS proveedor_nombre
-  FROM Calificacion c
-    INNER JOIN Proveedor p ON c.id_proveedor = p.id_proveedor
-    INNER JOIN Persona per ON p.id_persona = per.id_persona
+    c.puntuacion_total,
+    p.razon_social AS proveedor_nombre
+  FROM CALIFICACION c
+  INNER JOIN PROVEEDOR p ON c.cuit = p.cuit
 `
 
 async function fetchRatingById(pool, id) {
   const result = await pool
     .request()
     .input('id_calificacion', sql.Int, id)
-    .query(`${selectQuery}\n  WHERE c.id_calificacion = @id_calificacion`)
+    .query(`${selectQuery} WHERE c.id_calificacion = @id_calificacion`)
 
   return result.recordset[0]
 }
@@ -29,7 +31,7 @@ export async function GET() {
 
     const result = await pool
       .request()
-      .query(`${selectQuery}\n  ORDER BY c.fecha_evaluacion DESC, c.id_calificacion DESC`)
+      .query(`${selectQuery} ORDER BY c.id_calificacion DESC`)
 
     return NextResponse.json({
       success: true,
@@ -46,11 +48,11 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { fecha_evaluacion, puntaje, comentarios, id_proveedor } = await request.json()
+    const { cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
 
-    if (!fecha_evaluacion || !puntaje || !id_proveedor) {
+    if (!cuit) {
       return NextResponse.json(
-        { success: false, error: 'Los campos fecha_evaluacion, puntaje e id_proveedor son obligatorios.' },
+        { success: false, error: 'El campo cuit es obligatorio.' },
         { status: 400 }
       )
     }
@@ -59,14 +61,17 @@ export async function POST(request) {
 
     const insertResult = await pool
       .request()
-      .input('fecha_evaluacion', sql.Date, fecha_evaluacion)
-      .input('puntaje', sql.TinyInt, puntaje)
-      .input('comentarios', sql.NVarChar(255), comentarios || null)
-      .input('id_proveedor', sql.Int, id_proveedor)
+      .input('cuit', sql.BigInt, cuit)
+      .input('puntaje_plazo', sql.TinyInt, puntaje_plazo || null)
+      .input('puntaje_calidad', sql.TinyInt, puntaje_calidad || null)
+      .input('puntaje_tiempo_respuesta', sql.TinyInt, puntaje_tiempo_respuesta || null)
+      .input('puntaje_disponibilidad', sql.TinyInt, puntaje_disponibilidad || null)
+      .input('comentarios', sql.NVarChar(600), comentarios || null)
+      .input('puntuacion_total', sql.TinyInt, puntuacion_total || null)
       .query(`
-        INSERT INTO Calificacion (fecha_evaluacion, puntaje, comentarios, id_proveedor)
+        INSERT INTO CALIFICACION (cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total)
         OUTPUT INSERTED.id_calificacion AS id_calificacion
-        VALUES (@fecha_evaluacion, @puntaje, @comentarios, @id_proveedor)
+        VALUES (@cuit, @puntaje_plazo, @puntaje_calidad, @puntaje_tiempo_respuesta, @puntaje_disponibilidad, @comentarios, @puntuacion_total)
       `)
 
     const rating = await fetchRatingById(pool, insertResult.recordset[0].id_calificacion)
@@ -89,7 +94,7 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const { id_calificacion, fecha_evaluacion, puntaje, comentarios, id_proveedor } = await request.json()
+    const { id_calificacion, cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
 
     if (!id_calificacion) {
       return NextResponse.json(
@@ -103,16 +108,22 @@ export async function PUT(request) {
     const updateResult = await pool
       .request()
       .input('id_calificacion', sql.Int, id_calificacion)
-      .input('fecha_evaluacion', sql.Date, fecha_evaluacion)
-      .input('puntaje', sql.TinyInt, puntaje)
-      .input('comentarios', sql.NVarChar(255), comentarios || null)
-      .input('id_proveedor', sql.Int, id_proveedor)
+      .input('cuit', sql.BigInt, cuit || null)
+      .input('puntaje_plazo', sql.TinyInt, puntaje_plazo || null)
+      .input('puntaje_calidad', sql.TinyInt, puntaje_calidad || null)
+      .input('puntaje_tiempo_respuesta', sql.TinyInt, puntaje_tiempo_respuesta || null)
+      .input('puntaje_disponibilidad', sql.TinyInt, puntaje_disponibilidad || null)
+      .input('comentarios', sql.NVarChar(600), comentarios || null)
+      .input('puntuacion_total', sql.TinyInt, puntuacion_total || null)
       .query(`
-        UPDATE Calificacion
-        SET fecha_evaluacion = @fecha_evaluacion,
-            puntaje = @puntaje,
+        UPDATE CALIFICACION
+        SET cuit = COALESCE(@cuit, cuit),
+            puntaje_plazo = @puntaje_plazo,
+            puntaje_calidad = @puntaje_calidad,
+            puntaje_tiempo_respuesta = @puntaje_tiempo_respuesta,
+            puntaje_disponibilidad = @puntaje_disponibilidad,
             comentarios = @comentarios,
-            id_proveedor = @id_proveedor
+            puntuacion_total = @puntuacion_total
         WHERE id_calificacion = @id_calificacion
       `)
 
@@ -156,7 +167,7 @@ export async function DELETE(request) {
       .request()
       .input('id_calificacion', sql.Int, parseInt(id, 10))
       .query(`
-        DELETE FROM Calificacion WHERE id_calificacion = @id_calificacion
+        DELETE FROM CALIFICACION WHERE id_calificacion = @id_calificacion
       `)
 
     if (deleteResult.rowsAffected[0] === 0) {

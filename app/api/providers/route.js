@@ -34,8 +34,7 @@ const baseSelectQuery = `
             WHERE PR.cuit = P.cuit), '') as rubros,
     COALESCE((SELECT ROUND(AVG(CAST(C.puntuacion_total AS DECIMAL(3,2))), 1)
             FROM CALIFICACION C
-            JOIN ORDEN_DE_COMPRA OC ON C.id_orden = OC.id_orden
-            WHERE OC.cuit = P.cuit), 0) as calificacion
+            WHERE C.cuit = P.cuit), 0) as calificacion
   FROM PROVEEDOR P
   
   -- Obtener campos individuales de la dirección principal
@@ -479,15 +478,12 @@ export async function DELETE(request) {
 
     // Eliminar en orden para evitar violaciones de clave foránea
     
-    // 1. Eliminar calificaciones relacionadas (usando la relación correcta)
+    // 1. Eliminar calificaciones relacionadas
     await transaction
       .request()
       .input('cuit', sql.BigInt, cuit)
       .query(`
-        DELETE FROM CALIFICACION 
-        WHERE id_orden IN (
-          SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-        )
+        DELETE FROM CALIFICACION WHERE cuit = @cuit
       `)
 
     // 2. Eliminar items de órdenes de compra

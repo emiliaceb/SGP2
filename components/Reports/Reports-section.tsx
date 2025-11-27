@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Eye, Pencil, Plus, Trash2, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import SupplierFailureModal from "@/components/supplierFailure/supplierFailure-modal"
+import SupplierFailureModal from "@/components/Reports/Reports-modal"
 
 type SupplierFailure = {
   id_falla: number
