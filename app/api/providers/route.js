@@ -445,8 +445,6 @@ export async function PUT(request) {
 }
 
 export async function DELETE(request) {
-  const transaction = new sql.Transaction(await getConnection())
-
   try {
     const { searchParams } = new URL(request.url)
     const cuit = searchParams.get('cuit')
@@ -458,165 +456,39 @@ export async function DELETE(request) {
       )
     }
 
-    await transaction.begin()
+    const pool = await getConnection()
 
     // Verificar que el proveedor existe
-    const providerResult = await transaction
+    const providerResult = await pool
       .request()
       .input('cuit', sql.BigInt, cuit)
       .query(`
-        SELECT cuit FROM PROVEEDOR WHERE cuit = @cuit
+        SELECT cuit, baja FROM PROVEEDOR WHERE cuit = @cuit
       `)
 
     if (providerResult.recordset.length === 0) {
-      await transaction.rollback()
       return NextResponse.json(
         { success: false, error: 'Proveedor no encontrado' },
         { status: 404 }
       )
     }
 
-    // Eliminar en orden para evitar violaciones de clave foránea
-    
-    // 1. Eliminar calificaciones relacionadas
-    await transaction
+    // Realizar baja lógica (marcar fecha de baja)
+    await pool
       .request()
       .input('cuit', sql.BigInt, cuit)
+      .input('fecha_baja', sql.Date, new Date())
       .query(`
-        DELETE FROM CALIFICACION WHERE cuit = @cuit
+        UPDATE PROVEEDOR
+        SET baja = @fecha_baja
+        WHERE cuit = @cuit
       `)
-
-    // 2. Eliminar intervenciones de reclamos relacionados con las órdenes del proveedor
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM INTERVENCION
-        WHERE id_reclamo IN (
-          SELECT R.id_reclamo 
-          FROM RECLAMO R
-          WHERE R.id_orden IN (
-            SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-          )
-        )
-      `)
-
-    // 3. Eliminar reclamos relacionados con las órdenes del proveedor
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM RECLAMO
-        WHERE id_orden IN (
-          SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-        )
-      `)
-
-    // 4. Eliminar reclamos relacionados con equipos de las órdenes del proveedor
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM INTERVENCION
-        WHERE id_reclamo IN (
-          SELECT R.id_reclamo 
-          FROM RECLAMO R
-          INNER JOIN EQUIPO E ON R.id_equipo = E.id_equipo
-          INNER JOIN ITEM_ORDEN_DE_COMPRA IOC ON E.id_equipo = IOC.id_equipo
-          WHERE IOC.id_orden IN (
-            SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-          )
-        )
-      `)
-
-    // 5. Eliminar reclamos de equipos
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM RECLAMO
-        WHERE id_equipo IN (
-          SELECT E.id_equipo
-          FROM EQUIPO E
-          INNER JOIN ITEM_ORDEN_DE_COMPRA IOC ON E.id_equipo = IOC.id_equipo
-          WHERE IOC.id_orden IN (
-            SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-          )
-        )
-      `)
-
-    // 6. Eliminar items de órdenes de compra
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM ITEM_ORDEN_DE_COMPRA
-        WHERE id_orden IN (
-          SELECT id_orden FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-        )
-      `)
-
-    // 7. Eliminar órdenes de compra
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM ORDEN_DE_COMPRA WHERE cuit = @cuit
-      `)
-
-    // 8. Eliminar contratos
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM CONTRATO WHERE cuit = @cuit
-      `)
-
-    // 9. Eliminar técnicos
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM TECNICO WHERE cuit = @cuit
-      `)
-
-    // 10. Eliminar relación con rubros
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM PROVEEDOR_RUBRO WHERE cuit = @cuit
-      `)
-
-    // 11. Eliminar direcciones del proveedor
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM DIRECCION WHERE cuit = @cuit
-      `)
-
-    // 12. Finalmente eliminar el proveedor
-    await transaction
-      .request()
-      .input('cuit', sql.BigInt, cuit)
-      .query(`
-        DELETE FROM PROVEEDOR WHERE cuit = @cuit
-      `)
-
-    await transaction.commit()
 
     return NextResponse.json({
       success: true,
-      message: 'Proveedor eliminado exitosamente',
+      message: 'Proveedor dado de baja exitosamente',
     })
   } catch (error) {
-    try {
-      await transaction.rollback()
-    } catch (rollbackError) {
-      console.error('Error en rollback DELETE /api/providers:', rollbackError)
-    }
-
     console.error('Error en DELETE /api/providers:', error)
     return NextResponse.json(
       { success: false, error: error.message },

@@ -422,15 +422,86 @@ export async function DELETE(request) {
 
     await transaction.begin()
 
-    // Primero eliminar calificaciones asociadas
+    // 1. Eliminar intervenciones de reclamos relacionados con la orden
     await transaction
       .request()
       .input('id_orden', sql.Int, parseInt(id, 10))
       .query(`
-        DELETE FROM CALIFICACION WHERE id_orden = @id_orden
+        DELETE FROM INTERVENCION
+        WHERE id_reclamo IN (
+          SELECT id_reclamo FROM RECLAMO WHERE id_orden = @id_orden
+        )
       `)
 
-    // Eliminar items de la orden
+    // 2. Eliminar reclamos relacionados directamente con la orden
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        DELETE FROM RECLAMO WHERE id_orden = @id_orden
+      `)
+
+    // 3. Eliminar intervenciones de reclamos de equipos de la orden
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        DELETE FROM INTERVENCION
+        WHERE id_reclamo IN (
+          SELECT R.id_reclamo 
+          FROM RECLAMO R
+          INNER JOIN EQUIPO E ON R.id_equipo = E.id_equipo
+          INNER JOIN ITEM_ORDEN_DE_COMPRA IOC ON E.id_equipo = IOC.id_equipo
+          WHERE IOC.id_orden = @id_orden
+        )
+      `)
+
+    // 4. Eliminar reclamos de equipos de la orden
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        DELETE FROM RECLAMO
+        WHERE id_equipo IN (
+          SELECT E.id_equipo
+          FROM EQUIPO E
+          INNER JOIN ITEM_ORDEN_DE_COMPRA IOC ON E.id_equipo = IOC.id_equipo
+          WHERE IOC.id_orden = @id_orden
+        )
+      `)
+
+    // 5. Primero quitar la referencia de equipos en ITEM_ORDEN_DE_COMPRA
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        UPDATE ITEM_ORDEN_DE_COMPRA 
+        SET id_equipo = NULL 
+        WHERE id_orden = @id_orden AND id_equipo IS NOT NULL
+      `)
+
+    // 6. Ahora eliminar los equipos que quedaron sin referencia
+    await transaction
+      .request()
+      .input('id_orden', sql.Int, parseInt(id, 10))
+      .query(`
+        DELETE FROM EQUIPO
+        WHERE id_equipo IN (
+          SELECT E.id_equipo
+          FROM EQUIPO E
+          LEFT JOIN ITEM_ORDEN_DE_COMPRA IOC ON E.id_equipo = IOC.id_equipo
+          WHERE IOC.id_equipo IS NULL
+            AND E.id_equipo IN (
+              SELECT id_equipo_temp FROM (
+                SELECT id_equipo as id_equipo_temp 
+                FROM ITEM_ORDEN_DE_COMPRA 
+                WHERE id_orden = @id_orden
+              ) AS temp
+            )
+        )
+      `)
+
+    // 7. Eliminar items de la orden
     await transaction
       .request()
       .input('id_orden', sql.Int, parseInt(id, 10))
@@ -438,7 +509,7 @@ export async function DELETE(request) {
         DELETE FROM ITEM_ORDEN_DE_COMPRA WHERE id_orden = @id_orden
       `)
 
-    // Finalmente eliminar la orden
+    // 8. Finalmente eliminar la orden
     const deleteOrderResult = await transaction
       .request()
       .input('id_orden', sql.Int, parseInt(id, 10))

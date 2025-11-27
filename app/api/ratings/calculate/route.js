@@ -96,8 +96,10 @@ export async function POST(request) {
       .input('cuit', sql.BigInt, cuit)
       .query(`
         SELECT 
-          AVG(DATEDIFF(DAY, fecha_pedido, fecha_recepcion)) AS promedio_dias_entrega,
-          COUNT(*) AS total_ordenes
+          AVG(CAST(DATEDIFF(DAY, fecha_pedido, fecha_recepcion) AS FLOAT)) AS promedio_dias_entrega,
+          COUNT(*) AS total_ordenes,
+          MIN(DATEDIFF(DAY, fecha_pedido, fecha_recepcion)) AS min_dias,
+          MAX(DATEDIFF(DAY, fecha_pedido, fecha_recepcion)) AS max_dias
         FROM ORDEN_DE_COMPRA
         WHERE cuit = @cuit 
           AND fecha_recepcion IS NOT NULL
@@ -106,6 +108,8 @@ export async function POST(request) {
 
     const promedioDiasEntrega = plazosResult.recordset[0]?.promedio_dias_entrega || 0
     const totalOrdenes = plazosResult.recordset[0]?.total_ordenes || 0
+    const minDias = plazosResult.recordset[0]?.min_dias || 0
+    const maxDias = plazosResult.recordset[0]?.max_dias || 0
     const puntajePlazo = totalOrdenes > 0 ? calcularPuntajePlazo(promedioDiasEntrega) : 3
 
     // 2. Calcular Puntaje de Tiempo de Respuesta a Reclamos (TR)
@@ -254,6 +258,8 @@ export async function POST(request) {
         puntaje_plazo: {
           valor: puntajePlazo,
           promedio_dias: promedioDiasEntrega.toFixed(1),
+          min_dias: minDias,
+          max_dias: maxDias,
           total_ordenes: totalOrdenes,
         },
         puntaje_tiempo_respuesta: {

@@ -1,6 +1,3 @@
--- ########################################
--- ESQUEMA DE BASE DE DATOS - GESTIÓN DE PROVEEDORES
--- ########################################
 
 -- 1. PAIS
 CREATE TABLE PAIS (
@@ -218,39 +215,3 @@ CREATE TABLE INTERVENCION (
     CONSTRAINT CHK_EstadoIntervencion CHECK (estado IN ('ASIGNADA', 'EN PROGRESO', 'SUSPENDIDA', 'FINALIZADA', 'VERIFICADA'))
 );
 
--- ########################################
--- DATOS DE EJEMPLO
--- ########################################
-
--- 1. PAIS
-INSERT INTO PAIS (nombre) VALUES
-('Argentina'),
-('Chile'),
-('Uruguay');
-
--- 2. PROVINCIA (Depende de PAIS)
-INSERT INTO PROVINCIA (idPais, nombre) VALUES
-(1, 'Buenos Aires'),
-(1, 'Córdoba'),
-(1, 'Santa Fe'),
-(2, 'Santiago'),
-(3, 'Montevideo');
-
--- 3. LOCALIDAD (Depende de PROVINCIA)
-INSERT INTO LOCALIDAD (idProvincia, nombre) VALUES
-(2, 'La Plata'),
-(2, 'Mar del Plata'),
-(3, 'Ciudad de Córdoba'),
-(4, 'Rosario'),
-(5, 'Providencia'),
-(6, 'Centro');
-
--- 4. RUBRO
-INSERT INTO RUBRO (nombre) VALUES
-('Hardware'),
-('Software'),
-('Redes y Conectividad'),
-('Servicios de Mantenimiento'),
-('Consumibles');
-
--- Y el resto de datos de ejemplo...
