@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, Plus, Pencil, Trash2, Star, MapPin, Mail, Phone, Eye } from "lucide-react"
+import { Search, Plus, Pencil, Trash2, MapPin, Mail, Phone, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import ProviderModal from "@/components/providers/provider-modal"
@@ -27,21 +27,31 @@ const formatContact = (provider) => {
   return contacts.length > 0 ? contacts.join(' | ') : "Sin contacto"
 }
 
-const renderStars = (value) => {
-  const numericValue = Number(value) || 0
-  const roundedValue = Math.round(numericValue)
-  
+const getInterpretacionBadge = (score) => {
+  const value = Number(score) || 0
+  let label = ""
+  let colorClass = ""
+
+  if (value >= 2.7) {
+    label = "Óptimo"
+    colorClass = "bg-green-100 text-green-800"
+  } else if (value >= 1.7) {
+    label = "Aceptable"
+    colorClass = "bg-yellow-100 text-yellow-800"
+  } else if (value > 0) {
+    label = "Insatisfactorio"
+    colorClass = "bg-red-100 text-red-800"
+  } else {
+    label = "Sin calificar"
+    colorClass = "bg-gray-100 text-gray-800"
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex gap-0.5">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <Star
-            key={star}
-            className={`w-4 h-4 ${star <= roundedValue ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`}
-          />
-        ))}
-      </div>
-      <span className="text-xs text-muted-foreground">{numericValue.toFixed(1)}/5</span>
+    <div className="flex flex-col items-start gap-1">
+      <span className="text-sm font-bold">{value > 0 ? value.toFixed(2) : '-'}</span>
+      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colorClass}`}>
+        {label}
+      </span>
     </div>
   )
 }
@@ -229,7 +239,7 @@ export default function ProvidersSection() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {renderStars(provider.calificacion_total_promedio)}
+                    {getInterpretacionBadge(provider.calificacion_total_promedio)}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
