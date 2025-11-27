@@ -6,7 +6,6 @@ const selectQuery = `
     c.id_calificacion,
     c.cuit,
     c.puntaje_plazo,
-    c.puntaje_calidad,
     c.puntaje_tiempo_respuesta,
     c.puntaje_disponibilidad,
     c.comentarios,
@@ -48,7 +47,7 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const { cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
+    const { cuit, puntaje_plazo, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
 
     if (!cuit) {
       return NextResponse.json(
@@ -63,15 +62,14 @@ export async function POST(request) {
       .request()
       .input('cuit', sql.BigInt, cuit)
       .input('puntaje_plazo', sql.TinyInt, puntaje_plazo || null)
-      .input('puntaje_calidad', sql.TinyInt, puntaje_calidad || null)
       .input('puntaje_tiempo_respuesta', sql.TinyInt, puntaje_tiempo_respuesta || null)
       .input('puntaje_disponibilidad', sql.TinyInt, puntaje_disponibilidad || null)
       .input('comentarios', sql.NVarChar(600), comentarios || null)
       .input('puntuacion_total', sql.TinyInt, puntuacion_total || null)
       .query(`
-        INSERT INTO CALIFICACION (cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total)
+        INSERT INTO CALIFICACION (cuit, puntaje_plazo, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total)
         OUTPUT INSERTED.id_calificacion AS id_calificacion
-        VALUES (@cuit, @puntaje_plazo, @puntaje_calidad, @puntaje_tiempo_respuesta, @puntaje_disponibilidad, @comentarios, @puntuacion_total)
+        VALUES (@cuit, @puntaje_plazo, @puntaje_tiempo_respuesta, @puntaje_disponibilidad, @comentarios, @puntuacion_total)
       `)
 
     const rating = await fetchRatingById(pool, insertResult.recordset[0].id_calificacion)
@@ -94,7 +92,7 @@ export async function POST(request) {
 
 export async function PUT(request) {
   try {
-    const { id_calificacion, cuit, puntaje_plazo, puntaje_calidad, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
+    const { id_calificacion, cuit, puntaje_plazo, puntaje_tiempo_respuesta, puntaje_disponibilidad, comentarios, puntuacion_total } = await request.json()
 
     if (!id_calificacion) {
       return NextResponse.json(
@@ -110,7 +108,6 @@ export async function PUT(request) {
       .input('id_calificacion', sql.Int, id_calificacion)
       .input('cuit', sql.BigInt, cuit || null)
       .input('puntaje_plazo', sql.TinyInt, puntaje_plazo || null)
-      .input('puntaje_calidad', sql.TinyInt, puntaje_calidad || null)
       .input('puntaje_tiempo_respuesta', sql.TinyInt, puntaje_tiempo_respuesta || null)
       .input('puntaje_disponibilidad', sql.TinyInt, puntaje_disponibilidad || null)
       .input('comentarios', sql.NVarChar(600), comentarios || null)
@@ -119,7 +116,6 @@ export async function PUT(request) {
         UPDATE CALIFICACION
         SET cuit = COALESCE(@cuit, cuit),
             puntaje_plazo = @puntaje_plazo,
-            puntaje_calidad = @puntaje_calidad,
             puntaje_tiempo_respuesta = @puntaje_tiempo_respuesta,
             puntaje_disponibilidad = @puntaje_disponibilidad,
             comentarios = @comentarios,

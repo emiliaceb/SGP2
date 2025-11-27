@@ -188,11 +188,10 @@ CREATE TABLE CALIFICACION (
     id_calificacion INT IDENTITY(1,1) PRIMARY KEY,
     cuit BIGINT NOT NULL,
     puntaje_plazo TINYINT,
-    puntaje_calidad TINYINT,
     puntaje_tiempo_respuesta TINYINT,
     puntaje_disponibilidad TINYINT,
     comentarios NVARCHAR(600),
-    puntuacion_total TINYINT,
+    puntuacion_total DECIMAL(4,2),
     CONSTRAINT FK_CALIFICACION_PROVEEDOR FOREIGN KEY (cuit) REFERENCES PROVEEDOR(cuit)
 );
 
