@@ -1,5 +1,6 @@
 import { getConnection, sql } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import bcrypt from "bcryptjs"
 
 export async function POST(request) {
   try {
@@ -37,6 +38,15 @@ export async function POST(request) {
 
       const user = result.recordset[0];
 
+      const validPassword = await bcrypt.compare(password, user.contrasena);
+
+      if (!validPassword) {
+        return NextResponse.json(
+          { success: false, error: "Credenciales incorrectas" },
+          { status: 401 }
+        );
+      }
+
       return NextResponse.json({
         success: true,
         message: "Logueo exitoso!",
@@ -56,10 +66,12 @@ export async function POST(request) {
       );
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const insertResult = await pool
       .request()
       .input("usuario", sql.NVarChar(50), usuario)
-      .input("password", sql.NVarChar(100), password)
+      .input("password", sql.NVarChar(100), hashedPassword)
       .input("nombre", sql.NVarChar(100), nombre)
       .input("perfil", sql.NVarChar(50), perfil)
       .query(`
