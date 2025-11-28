@@ -26,7 +26,7 @@ export async function POST(request) {
         .query(`
           SELECT TOP 1 *
           FROM EMPLEADO
-          WHERE usuario = @usuario AND contrasena = @password
+          WHERE usuario = @usuario
         `);
 
       if (result.recordset.length === 0) {

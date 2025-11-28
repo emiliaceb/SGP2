@@ -108,12 +108,14 @@ const handleSubmit = async (e: React.FormEvent) => {
                                 <Label htmlFor="tipoEmpleado">Tipo de Empleado *</Label>
                                 <select
                                 id="tipoEmpleado"
-                                name="Seleccionar tipo"
+                                name="tipoEmpleado"
+                                value={""}
                                 onChange={(e) => setFormData({...formData, perfil: e.target.value})}
                                 disabled={false}
                                 className="w-full border px-3 py-2 rounded"
                                 required
                                 >
+                                <option value="" disabled>Seleccionar tipo</option>
                                 <option value="Compras">Comprador</option>
                                 <option value="Reposicion">Repositor</option>
                                 <option value="Gerencias">Gerente</option>
